@@ -1,0 +1,22 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.ProviderName}}"
+subcategory: ""
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+## Example Usage
+
+### Basic Usage
+
+{{tffile "examples/data-sources/ldap_sam_lookup/basic.tf"}}
+
+### With require_found for Validation
+
+{{tffile "examples/data-sources/ldap_sam_lookup/require_found.tf"}}
+
+{{ .SchemaMarkdown | trimspace }}

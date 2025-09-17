@@ -21,7 +21,7 @@ func NewLDAPSearchDataSource() datasource.DataSource {
 }
 
 type LDAPSearchDataSource struct {
-	conn *ldap.Conn
+	providerData *LDAPProviderData
 }
 
 type LDAPSearchDatasourceModel struct {
@@ -81,15 +81,15 @@ func (L *LDAPSearchDataSource) Configure(_ context.Context, request datasource.C
 		return
 	}
 
-	if conn, ok := request.ProviderData.(*ldap.Conn); !ok {
+	if providerData, ok := request.ProviderData.(*LDAPProviderData); !ok {
 		response.Diagnostics.AddError(
 			"Unexpected Datasource Configure Type",
-			fmt.Sprintf("Expected *ldap.Conn, got: %T. Please report this issue to the provider developers.", request.ProviderData),
+			fmt.Sprintf("Expected *LDAPProviderData, got: %T. Please report this issue to the provider developers.", request.ProviderData),
 		)
 
 		return
 	} else {
-		L.conn = conn
+		L.providerData = providerData
 	}
 }
 
@@ -134,20 +134,49 @@ func (L *LDAPSearchDataSource) Read(ctx context.Context, request datasource.Read
 
 	s := ldap.NewSearchRequest(data.BaseDN.ValueString(), scope, 0, 0, 0, false, filter, append(additionalAttributes, "*"), []ldap.Control{})
 
-	if result, err := L.conn.Search(s); err != nil {
+	if result, err := L.providerData.Conn.Search(s); err != nil {
 		response.Diagnostics.AddError(
 			"Can not read entry",
 			err.Error(),
 		)
 	} else {
-		for i, entry := range result.Entries {
+		// Build complete results structure first, then set atomically
+		var results []map[string][]string
+		
+		for _, entry := range result.Entries {
 			ctx := MaskAttributesFromArray(ctx, entry.Attributes)
 			tflog.Debug(ctx, "Found entry", map[string]interface{}{
 				"entry": ToLDIF(entry),
 			})
+			
+			// Build complete entry map
+			entryMap := make(map[string][]string)
+			
+			// Add DN first - with debug logging
+			entryMap["dn"] = []string{entry.DN}
+			tflog.Debug(ctx, "Setting DN field", map[string]interface{}{
+				"dn_value": entry.DN,
+				"entry_map_keys_after_dn": len(entryMap),
+			})
+			
+			// Add all other attributes
 			for _, attribute := range entry.Attributes {
-				response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("results").AtListIndex(i).AtMapKey(attribute.Name), attribute.Values)...)
+				if !isSystemAttribute(attribute.Name) {
+					encodedValues := encodeAttributeValues(attribute.Name, attribute.Values)
+					entryMap[attribute.Name] = encodedValues
+				}
 			}
+			
+			tflog.Debug(ctx, "Complete entry map built", map[string]interface{}{
+				"total_keys": len(entryMap),
+				"has_dn_key": entryMap["dn"] != nil,
+				"dn_values": entryMap["dn"],
+			})
+			
+			results = append(results, entryMap)
 		}
+		
+		// Set complete results structure once
+		response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("results"), results)...)
 	}
 }

@@ -105,6 +105,60 @@ func TestImport(t *testing.T) {
 	})
 }
 
+func TestSystemAttributeExclusion(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			// Test that system attributes are excluded from operations
+			{
+				Config: testSystemAttributeConfig,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("ldap_object.systemtest", "dn", "cn=systemtest,dc=example,dc=com"),
+					resource.TestCheckResourceAttr("ldap_object.systemtest", "object_classes.0", "person"),
+					resource.TestCheckResourceAttr("ldap_object.systemtest", "attributes.sn.0", "test"),
+					// System attributes should not be set in state even if specified in config
+					resource.TestCheckNoResourceAttr("ldap_object.systemtest", "attributes.distinguishedName"),
+					resource.TestCheckNoResourceAttr("ldap_object.systemtest", "attributes.objectGUID"),
+					resource.TestCheckNoResourceAttr("ldap_object.systemtest", "attributes.objectSid"),
+				),
+			},
+		},
+	})
+}
+
+func TestIsSystemAttribute(t *testing.T) {
+	tests := []struct {
+		name     string
+		attr     string
+		expected bool
+	}{
+		{"objectGUID should be system", "objectGUID", true},
+		{"objectSid should be system", "objectSid", true},
+		{"distinguishedName should be system", "distinguishedName", true},
+		{"dSCorePropagationData should be system", "dSCorePropagationData", true},
+		{"instanceType should be system", "instanceType", true},
+		{"whenCreated should be system", "whenCreated", true},
+		{"whenChanged should be system", "whenChanged", true},
+		{"uSNCreated should be system", "uSNCreated", true},
+		{"uSNChanged should be system", "uSNChanged", true},
+		{"memberOf should be system", "memberOf", true},
+		{"cn should not be system", "cn", false},
+		{"sn should not be system", "sn", false},
+		{"userPassword should not be system", "userPassword", false},
+		{"description should not be system", "description", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isSystemAttribute(tt.attr)
+			if result != tt.expected {
+				t.Errorf("isSystemAttribute(%s) = %v, expected %v", tt.attr, result, tt.expected)
+			}
+		})
+	}
+}
+
 func testChangePasswordExternally() {
 	ldapUrl := os.Getenv("LDAP_URL")
 	ldapBindDN := os.Getenv("LDAP_BIND_DN")
@@ -296,3 +350,23 @@ func (IgnorePlanCheck) CheckPlan(ctx context.Context, request plancheck.CheckPla
 func ignorePlanCheck() plancheck.PlanCheck {
 	return IgnorePlanCheck{}
 }
+
+const testSystemAttributeConfig = `
+resource "ldap_object" "systemtest" {
+	dn = "cn=systemtest,dc=example,dc=com"
+	object_classes = ["person"]
+	attributes = {
+		"cn" = ["systemtest"]
+		"sn" = ["test"]
+		"distinguishedName" = ["cn=systemtest,dc=example,dc=com"]
+		"objectGUID" = ["should-be-ignored"]
+		"objectSid" = ["should-be-ignored"]
+		"dSCorePropagationData" = ["should-be-ignored"]
+		"whenCreated" = ["should-be-ignored"]
+		"whenChanged" = ["should-be-ignored"]
+		"uSNCreated" = ["should-be-ignored"]
+		"uSNChanged" = ["should-be-ignored"]
+		"instanceType" = ["should-be-ignored"]
+	}
+}
+`

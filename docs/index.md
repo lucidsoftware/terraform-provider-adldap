@@ -33,8 +33,10 @@ provider "ldap" {
 
 ### Optional
 
+- `disabled_users_ou` (String) Base DN for searching disabled users when resolving member_cn attributes. Defaults to users_ou if not specified (`LDAP_DISABLED_USERS_OU`)
 - `ldap_bind_dn` (String) Bind DN used to manage directory (`LDAP_BIND_DN`)
 - `ldap_bind_password` (String) Bind password (`LDAP_BIND_PASSWORD`)
 - `ldap_tls_insecure_verify` (Boolean) Whether to skip certificate verification (`LDAP_TLS_INSECURE_VERIFY`)
 - `ldap_tls_use_starttls` (Boolean) Whether to connect using STARTTLS (`LDAP_TLS_USE_STARTTLS`)
 - `ldap_url` (String) LDAP URL to managed server (`LDAP_URL`)
+- `users_ou` (String) Base DN for searching active users when resolving member_cn attributes (`LDAP_USERS_OU`)

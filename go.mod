@@ -1,4 +1,4 @@
-module github.com/dodevops/terraform-provider-ldap
+module github.com/lucidsoftware/terraform-provider-adldap
 
 go 1.20
 

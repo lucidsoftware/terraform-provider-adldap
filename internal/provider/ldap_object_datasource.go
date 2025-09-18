@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"github.com/go-ldap/ldap/v3"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -19,7 +18,7 @@ func NewLDAPObjectDataSource() datasource.DataSource {
 }
 
 type LDAPObjectDataSource struct {
-	conn *ldap.Conn
+	providerData *LDAPProviderData
 }
 
 type LDAPObjectDatasourceModel struct {
@@ -59,7 +58,7 @@ func (L *LDAPObjectDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 			"attributes": schema.MapAttribute{
 				MarkdownDescription: "The definition of an attribute, the name defines the type of the attribute",
 				Computed:            true,
-				ElementType:         types.ListType{ElemType: types.StringType},
+				ElementType:         types.SetType{ElemType: types.StringType},
 			},
 		},
 	}
@@ -70,24 +69,22 @@ func (L *LDAPObjectDataSource) Configure(_ context.Context, request datasource.C
 		return
 	}
 
-	if conn, ok := request.ProviderData.(*ldap.Conn); !ok {
+	if providerData, ok := request.ProviderData.(*LDAPProviderData); !ok {
 		response.Diagnostics.AddError(
 			"Unexpected Datasource Configure Type",
-			fmt.Sprintf("Expected *ldap.Conn, got: %T. Please report this issue to the provider developers.", request.ProviderData),
+			fmt.Sprintf("Expected *LDAPProviderData, got: %T. Please report this issue to the provider developers.", request.ProviderData),
 		)
 
 		return
 	} else {
-		L.conn = conn
+		L.providerData = providerData
 	}
 }
 
 func (L *LDAPObjectDataSource) Read(ctx context.Context, request datasource.ReadRequest, response *datasource.ReadResponse) {
 	var data LDAPObjectDatasourceModel
 	response.Diagnostics.Append(request.Config.Get(ctx, &data)...)
-	var attributes map[string][]string
-	response.Diagnostics.Append(data.Attributes.ElementsAs(ctx, &attributes, false)...)
-	attributes = make(map[string][]string)
+	// Note: For data source, attributes will be populated from LDAP query results
 
 	var objectClasses []string
 	response.Diagnostics.Append(data.ObjectClasses.ElementsAs(ctx, &objectClasses, false)...)
@@ -101,7 +98,7 @@ func (L *LDAPObjectDataSource) Read(ctx context.Context, request datasource.Read
 	var additionalAttributes []string
 	response.Diagnostics.Append(data.AdditionalAttributes.ElementsAs(ctx, &additionalAttributes, false)...)
 
-	if entry, err := GetEntry(L.conn, data.DN.ValueString(), append(additionalAttributes, "*")...); err != nil {
+	if entry, err := GetEntry(L.providerData.Conn, data.DN.ValueString(), append(additionalAttributes, "*")...); err != nil {
 		response.Diagnostics.AddError(
 			"Can not read entry",
 			err.Error(),
@@ -112,8 +109,14 @@ func (L *LDAPObjectDataSource) Read(ctx context.Context, request datasource.Read
 		for _, attribute := range entry.Attributes {
 			if attribute.Name == "objectClass" {
 				response.State.SetAttribute(ctx, path.Root("object_classes"), attribute.Values)
-			} else {
-				response.State.SetAttribute(ctx, path.Root("attributes").AtMapKey(attribute.Name), attribute.Values)
+			} else if !isSystemAttribute(attribute.Name) {
+				encodedValues := encodeAttributeValues(attribute.Name, attribute.Values)
+				// Convert string slice to set for new schema
+				setValue, diags := types.SetValueFrom(ctx, types.StringType, encodedValues)
+				response.Diagnostics.Append(diags...)
+				if !response.Diagnostics.HasError() {
+					response.State.SetAttribute(ctx, path.Root("attributes").AtMapKey(attribute.Name), setValue)
+				}
 			}
 		}
 		tflog.Debug(ctx, "Read entry", map[string]interface{}{

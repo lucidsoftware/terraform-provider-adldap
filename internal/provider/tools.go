@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"github.com/go-ldap/ldap/v3"
 	"github.com/go-ldap/ldif"
@@ -60,4 +61,60 @@ func MaskAttributesFromArray(ctx context.Context, attributes []*ldap.EntryAttrib
 	} else {
 		return MaskAttributes(ctx, h)
 	}
+}
+
+// isBinaryAttribute checks if an attribute should be stored as base64
+func isBinaryAttribute(name string) bool {
+	return name == "objectGUID" || name == "objectSid"
+}
+
+// isSystemAttribute checks if an attribute should be excluded from modifications
+func isSystemAttribute(name string) bool {
+	return name == "objectGUID" || 
+		   name == "objectSid" ||
+		   // Temporarily allow distinguishedName for DN resolution
+		   // name == "distinguishedName" ||
+		   name == "dSCorePropagationData" ||
+		   name == "instanceType" ||
+		   name == "whenCreated" ||
+		   name == "whenChanged" ||
+		   name == "uSNCreated" ||
+		   name == "uSNChanged" ||
+		   name == "memberOf"
+}
+
+// isTerraformOnlyAttribute returns true if the attribute is a Terraform-only attribute
+// that should never be sent to LDAP operations (it gets resolved to other attributes)
+func isTerraformOnlyAttribute(name string) bool {
+	return name == "member_cn" || name == "member_sam"
+}
+
+// encodeAttributeValues encodes binary attribute values to base64
+func encodeAttributeValues(attributeName string, values []string) []string {
+	if !isBinaryAttribute(attributeName) {
+		return values
+	}
+	
+	encodedValues := make([]string, len(values))
+	for i, value := range values {
+		encodedValues[i] = base64.StdEncoding.EncodeToString([]byte(value))
+	}
+	return encodedValues
+}
+
+// decodeAttributeValues decodes base64 attribute values back to binary
+func decodeAttributeValues(attributeName string, values []string) []string {
+	if !isBinaryAttribute(attributeName) {
+		return values
+	}
+	
+	decodedValues := make([]string, len(values))
+	for i, value := range values {
+		if decoded, err := base64.StdEncoding.DecodeString(value); err == nil {
+			decodedValues[i] = string(decoded)
+		} else {
+			decodedValues[i] = value
+		}
+	}
+	return decodedValues
 }

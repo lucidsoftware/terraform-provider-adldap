@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
 	"fmt"
 	"github.com/go-ldap/ldap/v3"
@@ -14,7 +15,24 @@ import (
 	"log"
 	"os"
 	"strings"
+	"sync"
 )
+
+// UserLookupCacheEntry represents a cached user lookup result
+type UserLookupCacheEntry struct {
+	DN    string // Distinguished name if found, empty if not found
+	Found bool   // Whether the user was found
+}
+
+// LDAPProviderData contains the LDAP connection and configuration
+type LDAPProviderData struct {
+	Conn            *ldap.Conn
+	UsersOU         string
+	DisabledUsersOU string
+	// User lookup cache to prevent redundant LDAP queries within a single Terraform run
+	userLookupCache map[string]UserLookupCacheEntry
+	cacheMutex      sync.RWMutex
+}
 
 // Ensure LDAPProvider satisfies various provider interfaces.
 var _ provider.Provider = &LDAPProvider{}
@@ -34,6 +52,8 @@ type LDAPProviderModel struct {
 	LDAPBindPassword      types.String `tfsdk:"ldap_bind_password"`
 	LDAPTLSInsecureVerify types.Bool   `tfsdk:"ldap_tls_insecure_verify"`
 	LDAPTLSUseStartTLS    types.Bool   `tfsdk:"ldap_tls_use_starttls"`
+	UsersOU               types.String `tfsdk:"users_ou"`
+	DisabledUsersOU       types.String `tfsdk:"disabled_users_ou"`
 }
 
 func (p *LDAPProvider) Metadata(_ context.Context, _ provider.MetadataRequest, resp *provider.MetadataResponse) {
@@ -71,6 +91,14 @@ All provider options can be set by the respective environment variables as well.
 				MarkdownDescription: "Whether to connect using STARTTLS (`LDAP_TLS_USE_STARTTLS`)",
 				Optional:            true,
 			},
+			"users_ou": schema.StringAttribute{
+				MarkdownDescription: "Base DN for searching active users when resolving member_cn attributes (`LDAP_USERS_OU`)",
+				Optional:            true,
+			},
+			"disabled_users_ou": schema.StringAttribute{
+				MarkdownDescription: "Base DN for searching disabled users when resolving member_cn attributes. Defaults to users_ou if not specified (`LDAP_DISABLED_USERS_OU`)",
+				Optional:            true,
+			},
 		},
 	}
 }
@@ -89,6 +117,9 @@ func (p *LDAPProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 	if v := os.Getenv("LDAP_TLS_USE_STARTTLS"); v != "" {
 		ldapTLSUseStartTLS = strings.ToUpper(v) == "TRUE"
 	}
+
+	ldapUsersOU := os.Getenv("LDAP_USERS_OU")
+	ldapDisabledUsersOU := os.Getenv("LDAP_DISABLED_USERS_OU")
 
 	var data LDAPProviderModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
@@ -114,6 +145,14 @@ func (p *LDAPProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 
 	if !data.LDAPTLSUseStartTLS.IsNull() {
 		ldapTLSUseStartTLS = data.LDAPTLSUseStartTLS.ValueBool()
+	}
+
+	if data.UsersOU.ValueString() != "" {
+		ldapUsersOU = data.UsersOU.ValueString()
+	}
+
+	if data.DisabledUsersOU.ValueString() != "" {
+		ldapDisabledUsersOU = data.DisabledUsersOU.ValueString()
 	}
 
 	if ldapUrl == "" {
@@ -184,8 +223,21 @@ func (p *LDAPProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 			)
 			return
 		}
-		resp.DataSourceData = conn
-		resp.ResourceData = conn
+
+		// Default disabled_users_ou to users_ou if not specified
+		if ldapDisabledUsersOU == "" {
+			ldapDisabledUsersOU = ldapUsersOU
+		}
+
+		providerData := &LDAPProviderData{
+			Conn:            conn,
+			UsersOU:         ldapUsersOU,
+			DisabledUsersOU: ldapDisabledUsersOU,
+			userLookupCache: make(map[string]UserLookupCacheEntry),
+		}
+
+		resp.DataSourceData = providerData
+		resp.ResourceData = providerData
 	}
 }
 
@@ -199,7 +251,59 @@ func (p *LDAPProvider) DataSources(_ context.Context) []func() datasource.DataSo
 	return []func() datasource.DataSource{
 		NewLDAPObjectDataSource,
 		NewLDAPSearchDataSource,
+		NewLDAPSAMLookupDataSource,
+		NewLDAPCNLookupDataSource,
 	}
+}
+
+// generateCacheKey creates a FIPS 140-3 compliant checksummed cache key from the raw key components
+func generateCacheKey(rawKey string) string {
+	hasher := sha256.New()
+	hasher.Write([]byte(rawKey))
+	return fmt.Sprintf("%x", hasher.Sum(nil))
+}
+
+// cachedUserLookup performs a user lookup with caching support
+func (p *LDAPProviderData) cachedUserLookup(ctx context.Context, rawKey string, lookupFunc func() (string, bool)) (string, bool) {
+	// Generate checksummed cache key
+	cacheKey := generateCacheKey(rawKey)
+	
+	// Check cache first (read lock)
+	p.cacheMutex.RLock()
+	if entry, exists := p.userLookupCache[cacheKey]; exists {
+		p.cacheMutex.RUnlock()
+		tflog.Debug(ctx, "User lookup cache hit", map[string]interface{}{
+			"cache_key_raw":  rawKey,
+			"cache_key_hash": cacheKey,
+			"found":         entry.Found,
+		})
+		return entry.DN, entry.Found
+	}
+	p.cacheMutex.RUnlock()
+	
+	// Cache miss - perform LDAP lookup
+	tflog.Debug(ctx, "User lookup cache miss - performing LDAP query", map[string]interface{}{
+		"cache_key_raw":  rawKey,
+		"cache_key_hash": cacheKey,
+	})
+	
+	dn, found := lookupFunc()
+	
+	// Store result in cache (write lock)
+	p.cacheMutex.Lock()
+	p.userLookupCache[cacheKey] = UserLookupCacheEntry{
+		DN:    dn,
+		Found: found,
+	}
+	p.cacheMutex.Unlock()
+	
+	tflog.Debug(ctx, "User lookup result cached", map[string]interface{}{
+		"cache_key_raw":  rawKey,
+		"cache_key_hash": cacheKey,
+		"found":         found,
+	})
+	
+	return dn, found
 }
 
 func New(version string) func() provider.Provider {

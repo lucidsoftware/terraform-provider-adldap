@@ -22,23 +22,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@c85c95e3d7251135ab7dc9ce3241c5835cc595a9 # v3.5.3
-      - uses: actions/setup-go@fac708d6674e30b6ba41289acaab6d4b75aa0753 # v4.0.1
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
           go-version-file: 'go.mod'
           cache: true
       - run: go mod download
       - run: go build -v .
       - name: Run linters
-        uses: golangci/golangci-lint-action@639cd343e1d3b897ff35927a75193d57cfcba299 # v3.6.0
+        uses: golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9 # v8.0.0
         with:
           version: latest
 
   generate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@c85c95e3d7251135ab7dc9ce3241c5835cc595a9 # v3.5.3
-      - uses: actions/setup-go@fac708d6674e30b6ba41289acaab6d4b75aa0753 # v4.0.1
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
           go-version-file: 'go.mod'
           cache: true
@@ -48,9 +48,9 @@ jobs:
           git diff --compact-summary --exit-code || \
             (echo; echo "Unexpected difference in directories after code generation. Run 'go generate ./...' command and commit."; exit 1)
 
-  # Run acceptance tests in a matrix with Terraform CLI versions
+  # Run acceptance tests in a matrix with Terraform and OpenTofu CLI versions
   test:
-    name: Terraform Provider Acceptance Tests
+    name: Acceptance Tests (${{ matrix.tool }} ${{ matrix.version }})
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -61,24 +61,38 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # list whatever Terraform versions here you would like to support
-        terraform:
-          - '1.1.*'
-          - '1.2.*'
-          - '1.3.*'
+        include:
+          # Terraform
+          - tool: terraform
+            version: '1.6.*'
+          - tool: terraform
+            version: '1.9.*'
+          # OpenTofu
+          - tool: opentofu
+            version: '1.7.*'
+          - tool: opentofu
+            version: '1.8.*'
     steps:
-      - uses: actions/checkout@c85c95e3d7251135ab7dc9ce3241c5835cc595a9 # v3.5.3
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: isbang/compose-action@v1.4.1
         with:
           compose-file: "./contrib/test-ldap-server/docker-compose.yaml"
-      - uses: actions/setup-go@fac708d6674e30b6ba41289acaab6d4b75aa0753 # v4.0.1
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
           go-version-file: 'go.mod'
           cache: true
-      - uses: hashicorp/setup-terraform@633666f66e0061ca3b725c73b2ec20cd13a8fdd1 # v2.0.3
+      - name: Setup Terraform
+        if: matrix.tool == 'terraform'
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269ef032 # v3.1.2
         with:
-          terraform_version: ${{ matrix.terraform }}
+          terraform_version: ${{ matrix.version }}
           terraform_wrapper: false
+      - name: Setup OpenTofu
+        if: matrix.tool == 'opentofu'
+        uses: opentofu/setup-opentofu@592200bd325d4f30b5a4f8fe096a853fe78a8e6a # v1.0.5
+        with:
+          tofu_version: ${{ matrix.version }}
+          tofu_wrapper: false
       - run: go mod download
       - env:
           TF_ACC: "1"

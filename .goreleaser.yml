@@ -5,8 +5,11 @@ builds:
     flags: ["-trimpath"]
     ldflags:
       ["-s -w -X main.version={{ .Version }} -X main.commit={{ .Commit }}"]
-    goos: [darwin, linux]
+    goos: [darwin, linux, windows]
     goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
     binary: "{{ .ProjectName }}_v{{ .Version }}"
 
 archives:
@@ -16,6 +19,8 @@ archives:
 checksum:
   name_template: "{{ .ProjectName }}_{{ .Version }}_SHA256SUMS"
   algorithm: sha256
+  extra_files:
+    - glob: terraform-registry-manifest.json
 
 signs:
   - artifacts: checksum
@@ -29,4 +34,7 @@ signs:
       - "${artifact}"
 
 release:
-  disable: true
+  draft: false
+  extra_files:
+    - glob: terraform-registry-manifest.json
+      name_template: "{{ .ProjectName }}_{{ .Version }}_manifest.json"

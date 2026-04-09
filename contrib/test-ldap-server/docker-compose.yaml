@@ -7,6 +7,12 @@ services:
       LDAP_ADMIN_PASSWORD: "admin"
       LDAP_CONFIG_PASSWORD: "config"
       LDAP_TLS_VERIFY_CLIENT: "try"
+    healthcheck:
+      test: ["CMD-SHELL", "ldapwhoami -x -H ldap://127.0.0.1:389 -D \"cn=admin,dc=example,dc=com\" -w admin >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
     image: osixia/openldap:latest
     ports:
       - "1389:389"

@@ -139,6 +139,7 @@ Recent maintenance work was intentionally limited to security fixes, dependency 
 - `distinguishedName` is treated as a system-managed attribute again and is excluded from LDAP write operations
 - CI now runs `go test`, coverage, `go vet`, `staticcheck`, `gosec`, and `govulncheck`
 - vulnerable transitive dependencies identified by `govulncheck` were updated to patched versions
+- CI now pins a patched Go 1.25 toolchain level so `govulncheck` does not scan known-vulnerable Go 1.25.0 standard library packages
 - release tags now rerun verification and acceptance tests before GoReleaser publishes signed artifacts
 
 ## Testing Notes

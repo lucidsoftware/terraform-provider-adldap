@@ -9,6 +9,7 @@ BUG FIXES:
 - improve Terraform framework diagnostic propagation in provider, datasource, and resource code paths
 - update vulnerable transitive dependencies reported by `govulncheck`
 - update direct Go module dependencies to their latest available releases
+- pin the Go toolchain to patched `1.25.9` to remediate standard library vulnerabilities reported against `go1.25.0`
 - require tag-based releases to pass verification and acceptance checks before publishing artifacts
 
 TESTS:

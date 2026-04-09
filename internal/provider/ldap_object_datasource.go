@@ -92,11 +92,14 @@ func (L *LDAPObjectDataSource) Read(ctx context.Context, request datasource.Read
 		return
 	}
 
-	response.State.SetAttribute(ctx, path.Root("id"), data.DN)
-	response.State.SetAttribute(ctx, path.Root("dn"), data.DN)
+	response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("id"), data.DN)...)
+	response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("dn"), data.DN)...)
 
 	var additionalAttributes []string
 	response.Diagnostics.Append(data.AdditionalAttributes.ElementsAs(ctx, &additionalAttributes, false)...)
+	if response.Diagnostics.HasError() {
+		return
+	}
 
 	if entry, err := GetEntry(L.providerData.Conn, data.DN.ValueString(), append(additionalAttributes, "*")...); err != nil {
 		response.Diagnostics.AddError(
@@ -104,18 +107,18 @@ func (L *LDAPObjectDataSource) Read(ctx context.Context, request datasource.Read
 			err.Error(),
 		)
 	} else {
-		response.State.SetAttribute(ctx, path.Root("dn"), entry.DN)
+		response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("dn"), entry.DN)...)
 		ctx = MaskAttributesFromArray(ctx, entry.Attributes)
 		for _, attribute := range entry.Attributes {
 			if attribute.Name == "objectClass" {
-				response.State.SetAttribute(ctx, path.Root("object_classes"), attribute.Values)
+				response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("object_classes"), attribute.Values)...)
 			} else if !isSystemAttribute(attribute.Name) {
 				encodedValues := encodeAttributeValues(attribute.Name, attribute.Values)
 				// Convert string slice to set for new schema
 				setValue, diags := types.SetValueFrom(ctx, types.StringType, encodedValues)
 				response.Diagnostics.Append(diags...)
 				if !response.Diagnostics.HasError() {
-					response.State.SetAttribute(ctx, path.Root("attributes").AtMapKey(attribute.Name), setValue)
+					response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("attributes").AtMapKey(attribute.Name), setValue)...)
 				}
 			}
 		}

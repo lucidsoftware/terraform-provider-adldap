@@ -15,7 +15,7 @@ type TFLoggerAdapter struct {
 
 func (T TFLoggerAdapter) Write(p []byte) (n int, err error) {
 	if os.Getenv("TF_LOG") != "DEBUG" {
-		return 0, nil
+		return len(p), nil
 	}
 	tflog.Debug(T.ctx, fmt.Sprintf("LDAP log output: %s", p))
 	return len(p), nil

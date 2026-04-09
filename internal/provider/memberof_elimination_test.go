@@ -70,8 +70,7 @@ func TestLDAPSearchFiltersSystemAttributes(t *testing.T) {
 	}
 	
 	// Test that system attributes are properly filtered
-	ctx := context.Background()
-	ctx = MaskAttributesFromArray(ctx, mockEntry.Attributes)
+	_ = MaskAttributesFromArray(context.Background(), mockEntry.Attributes)
 	
 	// Simulate what the datasource does - filter system attributes
 	var processedAttrs []string
@@ -198,13 +197,9 @@ func TestLDAPResourceStructureExcludesMemberOf(t *testing.T) {
 		DN:            types.StringNull(),  
 		ObjectClasses: types.ListNull(types.StringType),
 		Attributes:    types.MapNull(types.ListType{ElemType: types.StringType}),
-		MemberCN:      types.ListNull(types.StringType),
-		MemberSAM:     types.ListNull(types.StringType),
 		IgnoreChanges: types.ListNull(types.StringType),
 	}
 	
-	// If this test compiles and runs, it proves MemberOf field was successfully removed
-	if model == nil {
-		t.Error("Model initialization failed")
-	}
+	// If this test compiles and runs, it proves MemberOf field was successfully removed.
+	_ = model
 }

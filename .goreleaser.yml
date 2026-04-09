@@ -27,6 +27,3 @@ signs:
       - "${signature}"
       - "--detach-sign"
       - "${artifact}"
-
-release:
-  disable: true

@@ -29,6 +29,21 @@ jobs:
           cache: true
       - run: go mod download
       - run: go build -v .
+      - name: Build Linux amd64 plugin zip
+        run: |
+          set -eu
+          mkdir -p dist
+          version="ci-${GITHUB_SHA::7}"
+          binary="terraform-provider-adldap_v${version}"
+          GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.version=${version} -X main.commit=${GITHUB_SHA}" -o "dist/${binary}" .
+          (cd dist && zip "${binary}_linux_amd64.zip" "${binary}")
+      - name: Upload Linux amd64 plugin zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-provider-adldap-linux-amd64-zip
+          path: dist/*_linux_amd64.zip
+          if-no-files-found: error
+          retention-days: 14
       - run: go install golang.org/x/vuln/cmd/govulncheck@latest
       - run: go install github.com/securego/gosec/v2/cmd/gosec@latest
       - run: go install honnef.co/go/tools/cmd/staticcheck@latest

@@ -57,6 +57,10 @@ jobs:
         with:
           terraform_version: '1.14.*'
           terraform_wrapper: false
+      - name: Verify Terraform 1.10 Support
+        run: |
+          echo "Testing Terraform 1.10 compatibility with terraform-plugin-framework based provider"
+          terraform version
       - run: docker compose -f ./contrib/test-ldap-server/docker-compose.yaml up -d
       - name: Wait For LDAP
         run: |

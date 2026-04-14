@@ -11,14 +11,15 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	dsschema "github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	pschema "github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	rschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
-	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 )
 
@@ -904,4 +905,639 @@ func TestStateContainsExpectedIDAfterModifyPlanDNChange(t *testing.T) {
 	if diags.HasError() || !id.IsUnknown() {
 		t.Fatalf("expected id to be unknown after DN change: %v %v", diags.Errors(), id)
 	}
+}
+
+func TestMaskAttributesFromArray(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("nil attributes", func(t *testing.T) {
+		result := MaskAttributesFromArray(ctx, nil)
+		if result == nil {
+			t.Error("expected non-nil context")
+		}
+	})
+}
+
+func TestDecodeAttributeValues(t *testing.T) {
+	t.Run("binary attribute with invalid base64", func(t *testing.T) {
+		result := decodeAttributeValues("objectGUID", []string{"not-valid-base64!!!"})
+		if len(result) != 1 || result[0] != "not-valid-base64!!!" {
+			t.Errorf("expected original value on decode error: %v", result)
+		}
+	})
+}
+
+func TestConvertToUnorderedListValue(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("non-unordered attribute returns original", func(t *testing.T) {
+		original := types.StringValue("test")
+		result, diags := convertToUnorderedListValue(ctx, "cn", original)
+		if diags.HasError() {
+			t.Errorf("unexpected diagnostics: %v", diags.Errors())
+		}
+		if result != original {
+			t.Error("expected original value for non-unordered attribute")
+		}
+	})
+
+	t.Run("invalid type returns original with error", func(t *testing.T) {
+		original := types.StringValue("test")
+		result, diags := convertToUnorderedListValue(ctx, "member", original)
+		if !diags.HasError() {
+			t.Error("expected error for invalid type")
+		}
+		if result != original {
+			t.Error("expected original value on error")
+		}
+	})
+}
+
+func TestLDAPObjectResource_ResolveCNtoDN(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("missing users_ou", func(t *testing.T) {
+		backend := newFakeLDAPBackend()
+		ri := &LDAPObjectResource{
+			providerData: &LDAPProviderData{
+				Conn:            backend.client(),
+				UsersOU:         "",
+				userLookupCache: map[string]UserLookupCacheEntry{},
+			},
+		}
+		_, err := ri.resolveCNtoDN(ctx, "test")
+		if err == nil {
+			t.Error("expected error for missing users_ou")
+		}
+	})
+
+	t.Run("search error continues to next base", func(t *testing.T) {
+		ri := &LDAPObjectResource{
+			providerData: &LDAPProviderData{
+				Conn: stubLDAPClient{searchFunc: func(*ldap.SearchRequest) (*ldap.SearchResult, error) {
+					return nil, errors.New("search error")
+				}},
+				UsersOU:         "ou=users,dc=example,dc=com",
+				DisabledUsersOU: "ou=disabled,dc=example,dc=com",
+				userLookupCache: map[string]UserLookupCacheEntry{},
+			},
+		}
+		_, err := ri.resolveCNtoDN(ctx, "test")
+		if err == nil {
+			t.Error("expected error")
+		}
+	})
+}
+
+func TestLDAPObjectResource_ResolveSAMToDN(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("missing users_ou", func(t *testing.T) {
+		backend := newFakeLDAPBackend()
+		ri := &LDAPObjectResource{
+			providerData: &LDAPProviderData{
+				Conn:            backend.client(),
+				UsersOU:         "",
+				userLookupCache: map[string]UserLookupCacheEntry{},
+			},
+		}
+		_, err := ri.resolveSAMToDN(ctx, "test")
+		if err == nil {
+			t.Error("expected error for missing users_ou")
+		}
+	})
+
+	t.Run("search error continues to next base", func(t *testing.T) {
+		ri := &LDAPObjectResource{
+			providerData: &LDAPProviderData{
+				Conn: stubLDAPClient{searchFunc: func(*ldap.SearchRequest) (*ldap.SearchResult, error) {
+					return nil, errors.New("search error")
+				}},
+				UsersOU:         "ou=users,dc=example,dc=com",
+				DisabledUsersOU: "ou=disabled,dc=example,dc=com",
+				userLookupCache: map[string]UserLookupCacheEntry{},
+			},
+		}
+		_, err := ri.resolveSAMToDN(ctx, "test")
+		if err == nil {
+			t.Error("expected error")
+		}
+	})
+}
+
+func TestLDAPObjectResource_ResolveMemberCNs(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("empty list", func(t *testing.T) {
+		backend := newFakeLDAPBackend()
+		resourceInstance := &LDAPObjectResource{
+			providerData: &LDAPProviderData{
+				Conn:            backend.client(),
+				UsersOU:         "ou=users,dc=example,dc=com",
+				DisabledUsersOU: "ou=disabled,dc=example,dc=com",
+				userLookupCache: map[string]UserLookupCacheEntry{},
+			},
+		}
+		dns, err := resourceInstance.resolveMemberCNs(ctx, []string{})
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if len(dns) != 0 {
+			t.Errorf("expected empty result, got %v", dns)
+		}
+	})
+}
+
+func TestLDAPObjectResource_ResolveMemberSAMs(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("empty list", func(t *testing.T) {
+		backend := newFakeLDAPBackend()
+		resourceInstance := &LDAPObjectResource{
+			providerData: &LDAPProviderData{
+				Conn:            backend.client(),
+				UsersOU:         "ou=users,dc=example,dc=com",
+				DisabledUsersOU: "ou=disabled,dc=example,dc=com",
+				userLookupCache: map[string]UserLookupCacheEntry{},
+			},
+		}
+		dns, err := resourceInstance.resolveMemberSAMs(ctx, []string{})
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if len(dns) != 0 {
+			t.Errorf("expected empty result, got %v", dns)
+		}
+	})
+}
+
+func TestLDAPObjectResource_RefreshLDAPState(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("search error", func(t *testing.T) {
+		ri := &LDAPObjectResource{
+			providerData: &LDAPProviderData{
+				Conn: stubLDAPClient{searchFunc: func(*ldap.SearchRequest) (*ldap.SearchResult, error) {
+					return nil, errors.New("search error")
+				}},
+				userLookupCache: map[string]UserLookupCacheEntry{},
+			},
+		}
+		_, err := ri.refreshLDAPState(ctx, "cn=test,dc=example,dc=com")
+		if err == nil {
+			t.Error("expected error")
+		}
+	})
+}
+
+func TestLDAPObjectResource_IsIgnored(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("diagnostics error", func(t *testing.T) {
+		model := LDAPObjectResourceModel{
+			IgnoreChanges: types.ListNull(types.StringType),
+		}
+		var diags diag.Diagnostics
+		resourceInstance := &LDAPObjectResource{}
+		result := resourceInstance.isIgnored(ctx, "cn", &model, diags)
+		if result {
+			t.Error("expected false on diagnostics error")
+		}
+	})
+}
+
+func TestLDAPObjectResource_AddLdapEntry(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("LDAP add failure", func(t *testing.T) {
+		resourceInstance := &LDAPObjectResource{
+			providerData: &LDAPProviderData{
+				Conn: stubLDAPClient{addFunc: func(*ldap.AddRequest) error {
+					return errors.New("add failed")
+				}},
+				UsersOU:         "ou=users,dc=example,dc=com",
+				DisabledUsersOU: "ou=disabled,dc=example,dc=com",
+				userLookupCache: map[string]UserLookupCacheEntry{},
+			},
+		}
+		model := &LDAPObjectResourceModel{
+			DN:            types.StringValue("cn=test,dc=example,dc=com"),
+			ObjectClasses: stringListValue("person"),
+			Attributes:    stringSetMapValue(map[string][]string{"cn": []string{"test"}}),
+		}
+		var diags diag.Diagnostics
+		err := resourceInstance.addLdapEntry(ctx, model, &diags)
+		if err == nil {
+			t.Error("expected error from LDAP add failure")
+		}
+	})
+}
+
+func TestLDAPSAMLookupDataSource_Read(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("empty users_ou", func(t *testing.T) {
+		backend := newFakeLDAPBackend()
+		pd := &LDAPProviderData{
+			Conn:            backend.client(),
+			UsersOU:         "",
+			DisabledUsersOU: "",
+			userLookupCache: map[string]UserLookupCacheEntry{},
+		}
+		ds := &LDAPSAMLookupDataSource{providerData: pd}
+		var schemaResp datasource.SchemaResponse
+		ds.Schema(ctx, datasource.SchemaRequest{}, &schemaResp)
+		resp := datasource.ReadResponse{State: emptyDatasourceState(schemaResp.Schema)}
+		ds.Read(ctx, datasource.ReadRequest{
+			Config: datasourceConfig(t, schemaResp.Schema, LDAPSAMLookupDatasourceModel{
+				SAMAccountName: types.StringValue("jdoe"),
+				RequireFound:   types.BoolNull(),
+			}),
+		}, &resp)
+	})
+
+	t.Run("user found in disabled users OU", func(t *testing.T) {
+		backend := newFakeLDAPBackend()
+		pd := &LDAPProviderData{
+			Conn:            backend.client(),
+			UsersOU:         "ou=users,dc=example,dc=com",
+			DisabledUsersOU: "ou=disabled,dc=example,dc=com",
+			userLookupCache: map[string]UserLookupCacheEntry{},
+		}
+		ds := &LDAPSAMLookupDataSource{providerData: pd}
+		var schemaResp datasource.SchemaResponse
+		ds.Schema(ctx, datasource.SchemaRequest{}, &schemaResp)
+		resp := datasource.ReadResponse{State: emptyDatasourceState(schemaResp.Schema)}
+		ds.Read(ctx, datasource.ReadRequest{
+			Config: datasourceConfig(t, schemaResp.Schema, LDAPSAMLookupDatasourceModel{
+				SAMAccountName: types.StringValue("duser"),
+				RequireFound:   types.BoolNull(),
+			}),
+		}, &resp)
+		if resp.Diagnostics.HasError() {
+			t.Errorf("unexpected diagnostics: %v", resp.Diagnostics.Errors())
+		}
+	})
+
+	t.Run("user not found with require_found", func(t *testing.T) {
+		backend := newFakeLDAPBackend()
+		pd := &LDAPProviderData{
+			Conn:            backend.client(),
+			UsersOU:         "ou=users,dc=example,dc=com",
+			DisabledUsersOU: "ou=disabled,dc=example,dc=com",
+			userLookupCache: map[string]UserLookupCacheEntry{},
+		}
+		ds := &LDAPSAMLookupDataSource{providerData: pd}
+		var schemaResp datasource.SchemaResponse
+		ds.Schema(ctx, datasource.SchemaRequest{}, &schemaResp)
+		resp := datasource.ReadResponse{State: emptyDatasourceState(schemaResp.Schema)}
+		ds.Read(ctx, datasource.ReadRequest{
+			Config: datasourceConfig(t, schemaResp.Schema, LDAPSAMLookupDatasourceModel{
+				SAMAccountName: types.StringValue("nonexistent"),
+				RequireFound:   types.BoolValue(true),
+			}),
+		}, &resp)
+		if !resp.Diagnostics.HasError() {
+			t.Error("expected error for user not found with require_found")
+		}
+	})
+}
+
+func TestLDAPCNLookupDataSource_Read(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("search error returns empty", func(t *testing.T) {
+		pd := &LDAPProviderData{
+			Conn: stubLDAPClient{searchFunc: func(*ldap.SearchRequest) (*ldap.SearchResult, error) {
+				return nil, errors.New("search error")
+			}},
+			UsersOU:         "ou=users,dc=example,dc=com",
+			DisabledUsersOU: "",
+			userLookupCache: map[string]UserLookupCacheEntry{},
+		}
+		ds := &LDAPCNLookupDataSource{providerData: pd}
+		var schemaResp datasource.SchemaResponse
+		ds.Schema(ctx, datasource.SchemaRequest{}, &schemaResp)
+		resp := datasource.ReadResponse{State: emptyDatasourceState(schemaResp.Schema)}
+		ds.Read(ctx, datasource.ReadRequest{
+			Config: datasourceConfig(t, schemaResp.Schema, LDAPCNLookupDatasourceModel{
+				CommonName:   types.StringValue("test"),
+				BaseDN:       types.StringValue("ou=users,dc=example,dc=com"),
+				RequireFound: types.BoolNull(),
+			}),
+		}, &resp)
+	})
+
+	t.Run("user found in disabled base DN", func(t *testing.T) {
+		backend := newFakeLDAPBackend()
+		pd := &LDAPProviderData{
+			Conn:            backend.client(),
+			UsersOU:         "ou=users,dc=example,dc=com",
+			DisabledUsersOU: "ou=disabled,dc=example,dc=com",
+			userLookupCache: map[string]UserLookupCacheEntry{},
+		}
+		ds := &LDAPCNLookupDataSource{providerData: pd}
+		var schemaResp datasource.SchemaResponse
+		ds.Schema(ctx, datasource.SchemaRequest{}, &schemaResp)
+		resp := datasource.ReadResponse{State: emptyDatasourceState(schemaResp.Schema)}
+		ds.Read(ctx, datasource.ReadRequest{
+			Config: datasourceConfig(t, schemaResp.Schema, LDAPCNLookupDatasourceModel{
+				CommonName:     types.StringValue("Disabled User"),
+				BaseDN:         types.StringValue("ou=users,dc=example,dc=com"),
+				DisabledBaseDN: types.StringValue("ou=disabled,dc=example,dc=com"),
+				RequireFound:   types.BoolNull(),
+			}),
+		}, &resp)
+		if resp.Diagnostics.HasError() {
+			t.Errorf("unexpected diagnostics: %v", resp.Diagnostics.Errors())
+		}
+	})
+}
+
+func TestUpdateWithSystemAttributeFiltering(t *testing.T) {
+	ctx := context.Background()
+	backend := newFakeLDAPBackend()
+	backend.entries["cn=test-system,dc=example,dc=com"] = map[string][]string{
+		"objectClass": []string{"person"},
+		"cn":          []string{"test-system"},
+		"sn":          []string{"Test"},
+	}
+
+	resourceInstance := &LDAPObjectResource{
+		providerData: &LDAPProviderData{
+			Conn:            backend.client(),
+			UsersOU:         "ou=users,dc=example,dc=com",
+			DisabledUsersOU: "ou=disabled,dc=example,dc=com",
+			userLookupCache: map[string]UserLookupCacheEntry{},
+		},
+	}
+
+	var schemaResp resource.SchemaResponse
+	resourceInstance.Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+
+	stateModel := LDAPObjectResourceModel{
+		ID:            types.StringValue("cn=test-system,dc=example,dc=com"),
+		DN:            types.StringValue("cn=test-system,dc=example,dc=com"),
+		ObjectClasses: stringListValue("person"),
+		Attributes: stringSetMapValue(map[string][]string{
+			"cn":                []string{"test-system"},
+			"sn":                []string{"Test"},
+			"objectGUID":        []string{"old-guid"},
+			"distinguishedName": []string{"cn=test-system,dc=example,dc=com"},
+		}),
+		IgnoreChanges: types.ListNull(types.StringType),
+	}
+
+	planModel := LDAPObjectResourceModel{
+		ID:            types.StringNull(),
+		DN:            types.StringValue("cn=test-system,dc=example,dc=com"),
+		ObjectClasses: stringListValue("person"),
+		Attributes: stringSetMapValue(map[string][]string{
+			"cn":                []string{"test-system"},
+			"sn":                []string{"Updated"},
+			"objectGUID":        []string{"new-guid"},
+			"distinguishedName": []string{"cn=test-system,dc=example,dc=com"},
+		}),
+		IgnoreChanges: types.ListNull(types.StringType),
+	}
+
+	updateResp := resource.UpdateResponse{State: emptyResourceState(schemaResp.Schema)}
+	resourceInstance.Update(ctx, resource.UpdateRequest{
+		State: resourceState(t, schemaResp.Schema, stateModel),
+		Plan:  resourcePlan(t, schemaResp.Schema, planModel),
+	}, &updateResp)
+	if updateResp.Diagnostics.HasError() {
+		t.Fatalf("update diagnostics: %v", updateResp.Diagnostics.Errors())
+	}
+
+	entry := backend.entry("cn=test-system,dc=example,dc=com")
+	if entry["sn"][0] != "Updated" {
+		t.Errorf("expected sn=Updated, got %v", entry["sn"])
+	}
+}
+
+func TestBinaryAttributeEncodeDecode(t *testing.T) {
+	t.Run("objectGUID encoding", func(t *testing.T) {
+		original := []string{"test-guid"}
+		encoded := encodeAttributeValues("objectGUID", original)
+		if len(encoded) != 1 || encoded[0] == original[0] {
+			t.Error("expected base64 encoded value")
+		}
+
+		decoded := decodeAttributeValues("objectGUID", encoded)
+		if len(decoded) != 1 || decoded[0] != original[0] {
+			t.Errorf("expected decoded value to match original: %v vs %v", decoded, original)
+		}
+	})
+
+	t.Run("objectSid encoding", func(t *testing.T) {
+		original := []string{"test-sid"}
+		encoded := encodeAttributeValues("objectSid", original)
+		if len(encoded) != 1 || encoded[0] == original[0] {
+			t.Error("expected base64 encoded value")
+		}
+
+		decoded := decodeAttributeValues("objectSid", encoded)
+		if len(decoded) != 1 || decoded[0] != original[0] {
+			t.Errorf("expected decoded value to match original: %v vs %v", decoded, original)
+		}
+	})
+
+	t.Run("non-binary attribute passes through", func(t *testing.T) {
+		original := []string{"plain", "values"}
+		encoded := encodeAttributeValues("cn", original)
+		if len(encoded) != 2 || encoded[0] != original[0] {
+			t.Error("expected non-encoded values for non-binary attribute")
+		}
+
+		decoded := decodeAttributeValues("cn", encoded)
+		if len(decoded) != 2 || decoded[0] != original[0] {
+			t.Error("expected passthrough for non-binary attribute")
+		}
+	})
+}
+
+func TestProviderConfigureEnvVars(t *testing.T) {
+	ctx := context.Background()
+	providerInstance := New("test")().(*LDAPProvider)
+	var schemaResp provider.SchemaResponse
+	providerInstance.Schema(ctx, provider.SchemaRequest{}, &schemaResp)
+
+	t.Run("TLS insecure verify env var", func(t *testing.T) {
+		backend := newFakeLDAPBackend()
+		withFakeDialer(t, func(_ string, _ ...ldap.DialOpt) (ldapClient, error) {
+			return backend.client(), nil
+		})
+		t.Setenv("LDAP_TLS_INSECURE_VERIFY", "true")
+		var resp provider.ConfigureResponse
+		providerInstance.Configure(ctx, provider.ConfigureRequest{
+			Config: providerConfig(t, schemaResp.Schema, LDAPProviderModel{
+				LDAPURL:          types.StringValue("ldaps://fake.example.com:636"),
+				LDAPBindDN:       types.StringValue("cn=admin,dc=example,dc=com"),
+				LDAPBindPassword: types.StringValue("admin"),
+			}),
+		}, &resp)
+		if resp.Diagnostics.HasError() {
+			t.Errorf("unexpected diagnostics: %v", resp.Diagnostics.Errors())
+		}
+	})
+
+	t.Run("TLS use starttls env var", func(t *testing.T) {
+		backend := newFakeLDAPBackend()
+		withFakeDialer(t, func(_ string, _ ...ldap.DialOpt) (ldapClient, error) {
+			return backend.client(), nil
+		})
+		t.Setenv("LDAP_TLS_USE_STARTTLS", "TRUE")
+		var resp provider.ConfigureResponse
+		providerInstance.Configure(ctx, provider.ConfigureRequest{
+			Config: providerConfig(t, schemaResp.Schema, LDAPProviderModel{
+				LDAPURL:          types.StringValue("ldap://fake.example.com:389"),
+				LDAPBindDN:       types.StringValue("cn=admin,dc=example,dc=com"),
+				LDAPBindPassword: types.StringValue("admin"),
+			}),
+		}, &resp)
+		if resp.Diagnostics.HasError() {
+			t.Errorf("unexpected diagnostics: %v", resp.Diagnostics.Errors())
+		}
+	})
+
+	t.Run("config overrides env vars", func(t *testing.T) {
+		backend := newFakeLDAPBackend()
+		withFakeDialer(t, func(_ string, _ ...ldap.DialOpt) (ldapClient, error) {
+			return backend.client(), nil
+		})
+		t.Setenv("LDAP_URL", "ldap://should-be-overridden.com")
+		var resp provider.ConfigureResponse
+		providerInstance.Configure(ctx, provider.ConfigureRequest{
+			Config: providerConfig(t, schemaResp.Schema, LDAPProviderModel{
+				LDAPURL:          types.StringValue("ldaps://config-value.com:636"),
+				LDAPBindDN:       types.StringValue("cn=admin,dc=example,dc=com"),
+				LDAPBindPassword: types.StringValue("admin"),
+			}),
+		}, &resp)
+		if resp.Diagnostics.HasError() {
+			t.Errorf("unexpected diagnostics: %v", resp.Diagnostics.Errors())
+		}
+	})
+
+	t.Run("invalid LDAP URL parse", func(t *testing.T) {
+		var resp provider.ConfigureResponse
+		providerInstance.Configure(ctx, provider.ConfigureRequest{
+			Config: providerConfig(t, schemaResp.Schema, LDAPProviderModel{
+				LDAPURL:          types.StringValue("invalid:url"),
+				LDAPBindDN:       types.StringValue("cn=admin"),
+				LDAPBindPassword: types.StringValue("admin"),
+			}),
+		}, &resp)
+		if !resp.Diagnostics.HasError() {
+			t.Error("expected error for invalid URL")
+		}
+	})
+}
+
+func TestUnorderedStringListTypeFunctions(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("ValueFromTerraform with valid list", func(t *testing.T) {
+		tftVal := tftypes.NewValue(tftypes.List{
+			ElementType: tftypes.String,
+		}, []tftypes.Value{
+			tftypes.NewValue(tftypes.String, "a"),
+			tftypes.NewValue(tftypes.String, "b"),
+		})
+		listType := NewUnorderedStringListType()
+		result, err := listType.ValueFromTerraform(ctx, tftVal)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if result == nil {
+			t.Error("expected non-nil result")
+		}
+	})
+
+	t.Run("ValueFromTerraform with null list", func(t *testing.T) {
+		tftVal := tftypes.NewValue(tftypes.List{
+			ElementType: tftypes.String,
+		}, nil)
+		listType := NewUnorderedStringListType()
+		result, err := listType.ValueFromTerraform(ctx, tftVal)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if result == nil {
+			t.Error("expected non-nil result")
+		}
+	})
+
+	t.Run("NewUnorderedStringListValue with elements", func(t *testing.T) {
+		elements := []attr.Value{basetypes.NewStringValue("a"), basetypes.NewStringValue("b")}
+		val, diags := NewUnorderedStringListValue(elements)
+		if diags.HasError() {
+			t.Errorf("unexpected diagnostics: %v", diags.Errors())
+		}
+		if val.IsNull() {
+			t.Error("expected non-null value")
+		}
+	})
+
+	t.Run("NewUnorderedStringListValue with single element", func(t *testing.T) {
+		elements := []attr.Value{basetypes.NewStringValue("only")}
+		val, diags := NewUnorderedStringListValue(elements)
+		if diags.HasError() {
+			t.Errorf("unexpected diagnostics: %v", diags.Errors())
+		}
+		if val.IsNull() {
+			t.Error("expected non-null value")
+		}
+	})
+
+	t.Run("ListSemanticEquals with same values", func(t *testing.T) {
+		val1, _ := NewUnorderedStringListValueFromStrings(ctx, []string{"a", "b", "c"})
+		val2, _ := NewUnorderedStringListValueFromStrings(ctx, []string{"c", "b", "a"})
+		equals, diags := val1.ListSemanticEquals(ctx, val2)
+		if diags.HasError() {
+			t.Errorf("unexpected diagnostics: %v", diags.Errors())
+		}
+		if !equals {
+			t.Error("expected values to be semantically equal")
+		}
+	})
+
+	t.Run("ListSemanticEquals with different values", func(t *testing.T) {
+		val1, _ := NewUnorderedStringListValueFromStrings(ctx, []string{"a", "b"})
+		val2, _ := NewUnorderedStringListValueFromStrings(ctx, []string{"a", "c"})
+		equals, _ := val1.ListSemanticEquals(ctx, val2)
+		if equals {
+			t.Error("expected values to not be semantically equal")
+		}
+	})
+
+	t.Run("ListSemanticEquals with different types", func(t *testing.T) {
+		val := UnorderedStringListValue{}
+		equals, diags := val.ListSemanticEquals(ctx, basetypes.NewListValueMust(types.StringType, []attr.Value{}))
+		if diags.HasError() {
+			t.Errorf("unexpected diagnostics: %v", diags.Errors())
+		}
+		if equals {
+			t.Error("expected false for different types")
+		}
+	})
+
+	t.Run("ListSemanticEquals with one null", func(t *testing.T) {
+		val1, _ := NewUnorderedStringListValueFromStrings(ctx, nil)
+		val2, _ := NewUnorderedStringListValueFromStrings(ctx, []string{"a"})
+		equals, _ := val1.ListSemanticEquals(ctx, val2)
+		if equals {
+			t.Error("expected false when one is null")
+		}
+	})
+
+	t.Run("ListSemanticEquals with one unknown", func(t *testing.T) {
+		val1 := UnorderedStringListValue{ListValue: basetypes.NewListUnknown(types.StringType)}
+		val2, _ := NewUnorderedStringListValueFromStrings(ctx, []string{"a"})
+		equals, _ := val1.ListSemanticEquals(ctx, val2)
+		if equals {
+			t.Error("expected false when one is unknown")
+		}
+	})
 }

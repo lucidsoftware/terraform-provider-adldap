@@ -1,0 +1,2934 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>provider: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">github.com/lucidsoftware/terraform-provider-adldap/internal/provider/attribute_utils.go (96.9%)</option>
+				
+				<option value="file1">github.com/lucidsoftware/terraform-provider-adldap/internal/provider/ldap_client.go (73.3%)</option>
+				
+				<option value="file2">github.com/lucidsoftware/terraform-provider-adldap/internal/provider/ldap_cn_lookup_datasource.go (87.0%)</option>
+				
+				<option value="file3">github.com/lucidsoftware/terraform-provider-adldap/internal/provider/ldap_object_datasource.go (94.3%)</option>
+				
+				<option value="file4">github.com/lucidsoftware/terraform-provider-adldap/internal/provider/ldap_object_resource.go (88.5%)</option>
+				
+				<option value="file5">github.com/lucidsoftware/terraform-provider-adldap/internal/provider/ldap_sam_lookup_datasource.go (85.7%)</option>
+				
+				<option value="file6">github.com/lucidsoftware/terraform-provider-adldap/internal/provider/ldap_search_datasource.go (93.3%)</option>
+				
+				<option value="file7">github.com/lucidsoftware/terraform-provider-adldap/internal/provider/logger_adapter.go (100.0%)</option>
+				
+				<option value="file8">github.com/lucidsoftware/terraform-provider-adldap/internal/provider/provider.go (98.2%)</option>
+				
+				<option value="file9">github.com/lucidsoftware/terraform-provider-adldap/internal/provider/tools.go (97.4%)</option>
+				
+				<option value="file10">github.com/lucidsoftware/terraform-provider-adldap/internal/provider/unordered_list_planmodifier.go (63.7%)</option>
+				
+				<option value="file11">github.com/lucidsoftware/terraform-provider-adldap/internal/provider/unordered_string_list_type.go (86.4%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package provider
+
+import (
+        "context"
+        "strings"
+
+        "github.com/hashicorp/terraform-plugin-framework/attr"
+        "github.com/hashicorp/terraform-plugin-framework/diag"
+        "github.com/hashicorp/terraform-plugin-framework/types/basetypes"
+        "github.com/thoas/go-funk"
+)
+
+// unorderedAttributes defines which LDAP attributes should be treated as unordered sets
+var unorderedAttributes = []string{
+        "member",          // Group membership
+        "objectClass",     // Object classes
+        "seeAlso",         // See also references
+        "aliasedObjectName", // Alias references
+        "uniqueMember",    // Unique group membership (alternative to member)
+        "roleOccupant",    // Role occupants
+        "owner",           // Owners
+        "dnsRoot",         // DNS root references
+        "wellKnownObjects", // Well-known objects
+}
+
+// isUnorderedAttribute determines if an LDAP attribute should be treated as unordered
+func isUnorderedAttribute(attributeName string) bool <span class="cov8" title="1">{
+        return funk.ContainsString(unorderedAttributes, attributeName)
+}</span>
+
+// convertToUnorderedListValue converts a regular list value to an UnorderedStringListValue if the attribute is unordered
+func convertToUnorderedListValue(ctx context.Context, attributeName string, value attr.Value) (attr.Value, diag.Diagnostics) <span class="cov8" title="1">{
+        var diags diag.Diagnostics
+        
+        // Only convert if this is an unordered attribute
+        if !isUnorderedAttribute(attributeName) </span><span class="cov8" title="1">{
+                return value, diags
+        }</span>
+        
+        // Handle null and unknown values
+        <span class="cov8" title="1">if value.IsNull() </span><span class="cov8" title="1">{
+                return UnorderedStringListValue{
+                        ListValue: basetypes.NewListNull(basetypes.StringType{}),
+                }, diags
+        }</span>
+        
+        <span class="cov8" title="1">if value.IsUnknown() </span><span class="cov8" title="1">{
+                return UnorderedStringListValue{
+                        ListValue: basetypes.NewListUnknown(basetypes.StringType{}),
+                }, diags
+        }</span>
+        
+        // Convert from regular list to unordered list
+        <span class="cov8" title="1">listValue, ok := value.(basetypes.ListValue)
+        if !ok </span><span class="cov8" title="1">{
+                diags.AddError(
+                        "Invalid attribute type",
+                        "Expected list value for attribute: "+attributeName,
+                )
+                return value, diags
+        }</span>
+        
+        // Extract string values
+        <span class="cov8" title="1">var stringValues []string
+        diags.Append(listValue.ElementsAs(ctx, &amp;stringValues, false)...)
+        if diags.HasError() </span><span class="cov0" title="0">{
+                return value, diags
+        }</span>
+        
+        // Create UnorderedStringListValue
+        <span class="cov8" title="1">unorderedValue, createDiags := NewUnorderedStringListValueFromStrings(ctx, stringValues)
+        diags.Append(createDiags...)
+        
+        return unorderedValue, diags</span>
+}
+
+// convertFromUnorderedListValue converts an UnorderedStringListValue back to a regular list value
+func convertFromUnorderedListValue(ctx context.Context, value attr.Value) (attr.Value, diag.Diagnostics) <span class="cov8" title="1">{
+        var diags diag.Diagnostics
+        
+        unorderedValue, ok := value.(UnorderedStringListValue)
+        if !ok </span><span class="cov8" title="1">{
+                // Not an unordered value, return as-is
+                return value, diags
+        }</span>
+        
+        // Return the underlying ListValue
+        <span class="cov8" title="1">return unorderedValue.ListValue, diags</span>
+}
+
+// getUnorderedAttributeType returns the appropriate attribute type for unordered attributes
+func getUnorderedAttributeType(attributeName string) attr.Type <span class="cov8" title="1">{
+        if isUnorderedAttribute(attributeName) </span><span class="cov8" title="1">{
+                return NewUnorderedStringListType()
+        }</span>
+        <span class="cov8" title="1">return basetypes.ListType{ElemType: basetypes.StringType{}}</span>
+}
+
+// addUnorderedAttributeDescription adds a note about ordering to the description for unordered attributes
+func addUnorderedAttributeDescription(attributeName, description string) string <span class="cov8" title="1">{
+        if isUnorderedAttribute(attributeName) </span><span class="cov8" title="1">{
+                suffix := " (Order is not significant for this attribute)"
+                if !strings.HasSuffix(description, suffix) </span><span class="cov8" title="1">{
+                        return description + suffix
+                }</span>
+        }
+        <span class="cov8" title="1">return description</span>
+}</pre>
+		
+		<pre class="file" id="file1" style="display: none">package provider
+
+import (
+        "crypto/tls"
+
+        "github.com/go-ldap/ldap/v3"
+)
+
+type ldapClient interface {
+        Add(*ldap.AddRequest) error
+        Bind(string, string) error
+        Close() error
+        Del(*ldap.DelRequest) error
+        Modify(*ldap.ModifyRequest) error
+        Search(*ldap.SearchRequest) (*ldap.SearchResult, error)
+        SetDebug(bool)
+        StartTLS(*tls.Config) error
+}
+
+type ldapClientAdapter struct {
+        conn *ldap.Conn
+}
+
+func (a *ldapClientAdapter) Add(req *ldap.AddRequest) error <span class="cov8" title="1">{
+        return a.conn.Add(req)
+}</span>
+
+func (a *ldapClientAdapter) Bind(username, password string) error <span class="cov8" title="1">{
+        return a.conn.Bind(username, password)
+}</span>
+
+func (a *ldapClientAdapter) Close() error <span class="cov8" title="1">{
+        return a.conn.Close()
+}</span>
+
+func (a *ldapClientAdapter) Del(req *ldap.DelRequest) error <span class="cov8" title="1">{
+        return a.conn.Del(req)
+}</span>
+
+func (a *ldapClientAdapter) Modify(req *ldap.ModifyRequest) error <span class="cov8" title="1">{
+        return a.conn.Modify(req)
+}</span>
+
+func (a *ldapClientAdapter) Search(req *ldap.SearchRequest) (*ldap.SearchResult, error) <span class="cov8" title="1">{
+        return a.conn.Search(req)
+}</span>
+
+func (a *ldapClientAdapter) SetDebug(enabled bool) <span class="cov8" title="1">{
+        if enabled </span><span class="cov8" title="1">{
+                a.conn.Debug = true
+                return
+        }</span>
+
+        <span class="cov8" title="1">a.conn.Debug = false</span>
+}
+
+func (a *ldapClientAdapter) StartTLS(config *tls.Config) error <span class="cov8" title="1">{
+        return a.conn.StartTLS(config)
+}</span>
+
+var ldapDialURL = func(target string, opts ...ldap.DialOpt) (ldapClient, error) <span class="cov0" title="0">{
+        conn, err := ldap.DialURL(target, opts...)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        <span class="cov0" title="0">return &amp;ldapClientAdapter{conn: conn}, nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">package provider
+
+import (
+        "context"
+        "fmt"
+        "github.com/go-ldap/ldap/v3"
+        "github.com/hashicorp/terraform-plugin-framework/datasource"
+        "github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+        "github.com/hashicorp/terraform-plugin-framework/types"
+        "github.com/hashicorp/terraform-plugin-log/tflog"
+)
+
+var _ datasource.DataSource = &amp;LDAPCNLookupDataSource{}
+var _ datasource.DataSourceWithConfigure = &amp;LDAPCNLookupDataSource{}
+
+func NewLDAPCNLookupDataSource() datasource.DataSource <span class="cov8" title="1">{
+        return &amp;LDAPCNLookupDataSource{}
+}</span>
+
+type LDAPCNLookupDataSource struct {
+        providerData *LDAPProviderData
+}
+
+type LDAPCNLookupDatasourceModel struct {
+        Id             types.String `tfsdk:"id"`
+        CommonName     types.String `tfsdk:"common_name"`
+        BaseDN         types.String `tfsdk:"base_dn"`
+        DisabledBaseDN types.String `tfsdk:"disabled_base_dn"`
+        DN             types.String `tfsdk:"dn"`
+        Found          types.Bool   `tfsdk:"found"`
+        RequireFound   types.Bool   `tfsdk:"require_found"`
+}
+
+func (L *LDAPCNLookupDataSource) Metadata(_ context.Context, request datasource.MetadataRequest, response *datasource.MetadataResponse) <span class="cov8" title="1">{
+        response.TypeName = request.ProviderTypeName + "_cn_lookup"
+}</span>
+
+func (L *LDAPCNLookupDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, response *datasource.SchemaResponse) <span class="cov8" title="1">{
+        response.Schema = schema.Schema{
+                MarkdownDescription: "LDAP Common Name to DN lookup datasource",
+                Attributes: map[string]schema.Attribute{
+                        "id": schema.StringAttribute{
+                                Computed:            true,
+                                MarkdownDescription: "Datasource identifier",
+                        },
+                        "common_name": schema.StringAttribute{
+                                MarkdownDescription: "Common name (CN) to lookup",
+                                Required:            true,
+                        },
+                        "base_dn": schema.StringAttribute{
+                                MarkdownDescription: "Base DN to search for the user",
+                                Required:            true,
+                        },
+                        "disabled_base_dn": schema.StringAttribute{
+                                MarkdownDescription: "Optional base DN to search for disabled users",
+                                Optional:            true,
+                        },
+                        "dn": schema.StringAttribute{
+                                MarkdownDescription: "Distinguished name of the user (empty if not found)",
+                                Computed:            true,
+                        },
+                        "found": schema.BoolAttribute{
+                                MarkdownDescription: "Whether the user was found",
+                                Computed:            true,
+                        },
+                        "require_found": schema.BoolAttribute{
+                                MarkdownDescription: "Whether to return an error if the user is not found (default: false)",
+                                Optional:            true,
+                        },
+                },
+        }
+}</span>
+
+func (L *LDAPCNLookupDataSource) Configure(_ context.Context, request datasource.ConfigureRequest, response *datasource.ConfigureResponse) <span class="cov8" title="1">{
+        if request.ProviderData == nil </span><span class="cov8" title="1">{
+                return
+        }</span>
+
+        <span class="cov8" title="1">if providerData, ok := request.ProviderData.(*LDAPProviderData); !ok </span><span class="cov8" title="1">{
+                response.Diagnostics.AddError(
+                        "Unexpected Datasource Configure Type",
+                        fmt.Sprintf("Expected *LDAPProviderData, got: %T. Please report this issue to the provider developers.", request.ProviderData),
+                )
+                return
+        }</span> else<span class="cov8" title="1"> {
+                L.providerData = providerData
+        }</span>
+}
+
+func (L *LDAPCNLookupDataSource) Read(ctx context.Context, request datasource.ReadRequest, response *datasource.ReadResponse) <span class="cov8" title="1">{
+        var data LDAPCNLookupDatasourceModel
+        response.Diagnostics.Append(request.Config.Get(ctx, &amp;data)...)
+
+        if response.Diagnostics.HasError() </span><span class="cov0" title="0">{
+                return
+        }</span>
+
+        <span class="cov8" title="1">commonName := data.CommonName.ValueString()
+        baseDN := data.BaseDN.ValueString()
+        disabledBaseDN := ""
+        if !data.DisabledBaseDN.IsNull() &amp;&amp; !data.DisabledBaseDN.IsUnknown() </span><span class="cov8" title="1">{
+                disabledBaseDN = data.DisabledBaseDN.ValueString()
+        }</span>
+        
+        // Set the ID for this datasource
+        <span class="cov8" title="1">data.Id = types.StringValue(fmt.Sprintf("cn_lookup_%s", commonName))
+
+        tflog.Debug(ctx, "Looking up Common Name", map[string]interface{}{
+                "common_name":       commonName,
+                "base_dn":          baseDN,
+                "disabled_base_dn": disabledBaseDN,
+        })
+
+        // Create cache key for CN lookup (includes base DNs to prevent cache poisoning)
+        rawKey := fmt.Sprintf("cn:%s:%s:%s", commonName, baseDN, disabledBaseDN)
+        
+        // Perform cached lookup
+        dn, found := L.providerData.cachedUserLookup(ctx, rawKey, func() (string, bool) </span><span class="cov8" title="1">{
+                // Search for user by CN
+                filter := fmt.Sprintf("(&amp;(objectCategory=Person)(cn=%s))", ldap.EscapeFilter(commonName))
+                
+                // Try primary base DN first
+                if dn := L.searchForUser(ctx, baseDN, filter); dn != "" </span><span class="cov8" title="1">{
+                        return dn, true
+                }</span>
+
+                // Try disabled base DN if configured
+                <span class="cov8" title="1">if disabledBaseDN != "" </span><span class="cov0" title="0">{
+                        if dn := L.searchForUser(ctx, disabledBaseDN, filter); dn != "" </span><span class="cov0" title="0">{
+                                return dn, true
+                        }</span>
+                }
+
+                // User not found
+                <span class="cov8" title="1">return "", false</span>
+        })
+        
+        // Set the results
+        <span class="cov8" title="1">data.DN = types.StringValue(dn)
+        data.Found = types.BoolValue(found)
+        
+        // Check if require_found is enabled and user not found
+        if !data.RequireFound.IsNull() &amp;&amp; data.RequireFound.ValueBool() &amp;&amp; !found </span><span class="cov0" title="0">{
+                response.Diagnostics.AddError(
+                        "Common Name not found",
+                        fmt.Sprintf("Common Name '%s' was not found in the configured base DNs and require_found is true", commonName),
+                )
+                return
+        }</span>
+        
+        <span class="cov8" title="1">tflog.Debug(ctx, "Common Name not found", map[string]interface{}{
+                "common_name": commonName,
+                "base_dn":     baseDN,
+        })
+
+        response.Diagnostics.Append(response.State.Set(ctx, &amp;data)...)</span>
+}
+
+// searchForUser performs LDAP search and returns DN if found, empty string if not found
+func (L *LDAPCNLookupDataSource) searchForUser(ctx context.Context, baseDN, filter string) string <span class="cov8" title="1">{
+        s := ldap.NewSearchRequest(baseDN, ldap.ScopeWholeSubtree, 0, 0, 0, false, filter, []string{}, []ldap.Control{})
+
+        result, err := L.providerData.Conn.Search(s)
+        if err != nil </span><span class="cov8" title="1">{
+                tflog.Warn(ctx, "LDAP search failed", map[string]interface{}{
+                        "base_dn": baseDN,
+                        "filter":  filter,
+                        "error":   err.Error(),
+                })
+                return ""
+        }</span>
+
+        <span class="cov8" title="1">if len(result.Entries) &gt; 0 </span><span class="cov8" title="1">{
+                dn := result.Entries[0].DN
+                tflog.Debug(ctx, "User found", map[string]interface{}{
+                        "base_dn": baseDN,
+                        "filter":  filter,
+                        "dn":      dn,
+                })
+                return dn
+        }</span>
+
+        <span class="cov0" title="0">return ""</span>
+}
+</pre>
+		
+		<pre class="file" id="file3" style="display: none">package provider
+
+import (
+        "context"
+        "fmt"
+        "github.com/hashicorp/terraform-plugin-framework/datasource"
+        "github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+        "github.com/hashicorp/terraform-plugin-framework/path"
+        "github.com/hashicorp/terraform-plugin-framework/types"
+        "github.com/hashicorp/terraform-plugin-log/tflog"
+)
+
+var _ datasource.DataSource = &amp;LDAPObjectDataSource{}
+var _ datasource.DataSourceWithConfigure = &amp;LDAPObjectDataSource{}
+
+func NewLDAPObjectDataSource() datasource.DataSource <span class="cov8" title="1">{
+        return &amp;LDAPObjectDataSource{}
+}</span>
+
+type LDAPObjectDataSource struct {
+        providerData *LDAPProviderData
+}
+
+type LDAPObjectDatasourceModel struct {
+        Id                   types.String `tfsdk:"id"`
+        DN                   types.String `tfsdk:"dn"`
+        ObjectClasses        types.List   `tfsdk:"object_classes"`
+        Attributes           types.Map    `tfsdk:"attributes"`
+        AdditionalAttributes types.Set    `tfsdk:"additional_attributes"`
+}
+
+func (L *LDAPObjectDataSource) Metadata(_ context.Context, request datasource.MetadataRequest, response *datasource.MetadataResponse) <span class="cov8" title="1">{
+        response.TypeName = request.ProviderTypeName + "_object"
+}</span>
+
+func (L *LDAPObjectDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, response *datasource.SchemaResponse) <span class="cov8" title="1">{
+        response.Schema = schema.Schema{
+                MarkdownDescription: "Generic LDAP object datasource",
+                Attributes: map[string]schema.Attribute{
+                        "id": schema.StringAttribute{
+                                Computed:            true,
+                                MarkdownDescription: "Datasource identifier",
+                        },
+                        "dn": schema.StringAttribute{
+                                MarkdownDescription: "DN of this ldap object",
+                                Required:            true,
+                        },
+                        "additional_attributes": schema.SetAttribute{
+                                MarkdownDescription: "Any additional attributes to request, such as constructed attributes",
+                                Optional:            true,
+                                ElementType:         types.StringType,
+                        },
+                        "object_classes": schema.ListAttribute{
+                                MarkdownDescription: "A list of classes this object implements",
+                                ElementType:         types.StringType,
+                                Computed:            true,
+                        },
+                        "attributes": schema.MapAttribute{
+                                MarkdownDescription: "The definition of an attribute, the name defines the type of the attribute",
+                                Computed:            true,
+                                ElementType:         types.SetType{ElemType: types.StringType},
+                        },
+                },
+        }
+}</span>
+
+func (L *LDAPObjectDataSource) Configure(_ context.Context, request datasource.ConfigureRequest, response *datasource.ConfigureResponse) <span class="cov8" title="1">{
+        if request.ProviderData == nil </span><span class="cov8" title="1">{
+                return
+        }</span>
+
+        <span class="cov8" title="1">if providerData, ok := request.ProviderData.(*LDAPProviderData); !ok </span><span class="cov8" title="1">{
+                response.Diagnostics.AddError(
+                        "Unexpected Datasource Configure Type",
+                        fmt.Sprintf("Expected *LDAPProviderData, got: %T. Please report this issue to the provider developers.", request.ProviderData),
+                )
+
+                return
+        }</span> else<span class="cov8" title="1"> {
+                L.providerData = providerData
+        }</span>
+}
+
+func (L *LDAPObjectDataSource) Read(ctx context.Context, request datasource.ReadRequest, response *datasource.ReadResponse) <span class="cov8" title="1">{
+        var data LDAPObjectDatasourceModel
+        response.Diagnostics.Append(request.Config.Get(ctx, &amp;data)...)
+        // Note: For data source, attributes will be populated from LDAP query results
+
+        var objectClasses []string
+        response.Diagnostics.Append(data.ObjectClasses.ElementsAs(ctx, &amp;objectClasses, false)...)
+        if response.Diagnostics.HasError() </span><span class="cov0" title="0">{
+                return
+        }</span>
+
+        <span class="cov8" title="1">response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("id"), data.DN)...)
+        response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("dn"), data.DN)...)
+
+        var additionalAttributes []string
+        response.Diagnostics.Append(data.AdditionalAttributes.ElementsAs(ctx, &amp;additionalAttributes, false)...)
+        if response.Diagnostics.HasError() </span><span class="cov0" title="0">{
+                return
+        }</span>
+
+        <span class="cov8" title="1">if entry, err := GetEntry(L.providerData.Conn, data.DN.ValueString(), append(additionalAttributes, "*")...); err != nil </span><span class="cov8" title="1">{
+                response.Diagnostics.AddError(
+                        "Can not read entry",
+                        err.Error(),
+                )
+        }</span> else<span class="cov8" title="1"> {
+                response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("dn"), entry.DN)...)
+                ctx = MaskAttributesFromArray(ctx, entry.Attributes)
+                for _, attribute := range entry.Attributes </span><span class="cov8" title="1">{
+                        if attribute.Name == "objectClass" </span><span class="cov8" title="1">{
+                                response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("object_classes"), attribute.Values)...)
+                        }</span> else<span class="cov8" title="1"> if !isSystemAttribute(attribute.Name) </span><span class="cov8" title="1">{
+                                encodedValues := encodeAttributeValues(attribute.Name, attribute.Values)
+                                // Convert string slice to set for new schema
+                                setValue, diags := types.SetValueFrom(ctx, types.StringType, encodedValues)
+                                response.Diagnostics.Append(diags...)
+                                if !response.Diagnostics.HasError() </span><span class="cov8" title="1">{
+                                        response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("attributes").AtMapKey(attribute.Name), setValue)...)
+                                }</span>
+                        }
+                }
+                <span class="cov8" title="1">tflog.Debug(ctx, "Read entry", map[string]interface{}{
+                        "entry": ToLDIF(entry),
+                })</span>
+        }
+}
+</pre>
+		
+		<pre class="file" id="file4" style="display: none">package provider
+
+import (
+        "context"
+        "errors"
+        "fmt"
+        "github.com/go-ldap/ldap/v3"
+        "github.com/hashicorp/terraform-plugin-framework/diag"
+        "github.com/hashicorp/terraform-plugin-framework/path"
+        "github.com/hashicorp/terraform-plugin-framework/resource"
+        "github.com/hashicorp/terraform-plugin-framework/resource/schema"
+        "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+        "github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+        "github.com/hashicorp/terraform-plugin-framework/types"
+        "github.com/hashicorp/terraform-plugin-log/tflog"
+        "github.com/thoas/go-funk"
+)
+
+var _ resource.Resource = &amp;LDAPObjectResource{}
+var _ resource.ResourceWithImportState = &amp;LDAPObjectResource{}
+var _ resource.ResourceWithModifyPlan = &amp;LDAPObjectResource{}
+var _ resource.ResourceWithConfigure = &amp;LDAPObjectResource{}
+
+func NewLDAPObjectResource() resource.Resource <span class="cov8" title="1">{
+        return &amp;LDAPObjectResource{}
+}</span>
+
+type LDAPObjectResource struct {
+        providerData *LDAPProviderData
+}
+
+type LDAPObjectResourceModel struct {
+        ID            types.String `tfsdk:"id"`
+        DN            types.String `tfsdk:"dn"`
+        ObjectClasses types.List   `tfsdk:"object_classes"`
+        Attributes    types.Map    `tfsdk:"attributes"`
+        IgnoreChanges types.List   `tfsdk:"ignore_changes"`
+}
+
+func (L *LDAPObjectResource) Metadata(_ context.Context, request resource.MetadataRequest, response *resource.MetadataResponse) <span class="cov8" title="1">{
+        response.TypeName = request.ProviderTypeName + "_object"
+}</span>
+
+func (L *LDAPObjectResource) Schema(_ context.Context, _ resource.SchemaRequest, response *resource.SchemaResponse) <span class="cov8" title="1">{
+        response.Schema = schema.Schema{
+                MarkdownDescription: "Generic LDAP object resource",
+                Attributes: map[string]schema.Attribute{
+                        "id": schema.StringAttribute{
+                                Computed:            true,
+                                MarkdownDescription: "Resource identifier",
+                                PlanModifiers: []planmodifier.String{
+                                        stringplanmodifier.UseStateForUnknown(),
+                                },
+                        },
+                        "dn": schema.StringAttribute{
+                                MarkdownDescription: "DN of this ldap object",
+                                Required:            true,
+                        },
+                        "object_classes": schema.ListAttribute{
+                                MarkdownDescription: "A list of classes this object implements",
+                                ElementType:         types.StringType,
+                                Required:            true,
+                        },
+                        "attributes": schema.MapAttribute{
+                                MarkdownDescription: "The definition of an attribute, the name defines the type of the attribute",
+                                Optional:            true,
+                                ElementType:         types.SetType{ElemType: types.StringType},
+                                PlanModifiers: []planmodifier.Map{
+                                        NewUnorderedMapListPlanModifier(),
+                                },
+                        },
+                        "ignore_changes": schema.ListAttribute{
+                                MarkdownDescription: "A list of types for which changes are ignored",
+                                Optional:            true,
+                                ElementType:         types.StringType,
+                        },
+                },
+        }
+}</span>
+
+func (L *LDAPObjectResource) Configure(_ context.Context, request resource.ConfigureRequest, response *resource.ConfigureResponse) <span class="cov8" title="1">{
+        if request.ProviderData == nil </span><span class="cov8" title="1">{
+                return
+        }</span>
+
+        <span class="cov8" title="1">if providerData, ok := request.ProviderData.(*LDAPProviderData); !ok </span><span class="cov8" title="1">{
+                response.Diagnostics.AddError(
+                        "Unexpected Resource Configure Type",
+                        fmt.Sprintf("Expected *LDAPProviderData, got: %T. Please report this issue to the provider developers.", request.ProviderData),
+                )
+
+                return
+        }</span> else<span class="cov8" title="1"> {
+                L.providerData = providerData
+        }</span>
+}
+
+func (L *LDAPObjectResource) Create(ctx context.Context, request resource.CreateRequest, response *resource.CreateResponse) <span class="cov8" title="1">{
+        var data *LDAPObjectResourceModel
+        response.Diagnostics.Append(request.Plan.Get(ctx, &amp;data)...)
+        if response.Diagnostics.HasError() </span><span class="cov0" title="0">{
+                return
+        }</span>
+
+        <span class="cov8" title="1">if err := L.addLdapEntry(ctx, data, &amp;response.Diagnostics); err != nil </span><span class="cov8" title="1">{
+                response.Diagnostics.AddError(
+                        "Can not add resource",
+                        fmt.Sprintf("LDAP server reported: %s", err),
+                )
+                return
+        }</span>
+        
+        <span class="cov8" title="1">data.ID = data.DN
+        response.Diagnostics.Append(response.State.Set(ctx, &amp;data)...)</span>
+}
+
+func (L *LDAPObjectResource) Read(ctx context.Context, request resource.ReadRequest, response *resource.ReadResponse) <span class="cov8" title="1">{
+        var data *LDAPObjectResourceModel
+        response.Diagnostics.Append(request.State.Get(ctx, &amp;data)...)
+        if response.Diagnostics.HasError() </span><span class="cov0" title="0">{
+                return
+        }</span>
+
+        <span class="cov8" title="1">tflog.Debug(ctx, "Reading entry", map[string]interface{}{"dn": data.DN.ValueString()})
+        
+        // Check for LDAP connection before attempting to read
+        if L.providerData == nil || L.providerData.Conn == nil </span><span class="cov8" title="1">{
+                response.Diagnostics.AddError(
+                        "Cannot read entry - no LDAP connection",
+                        "LDAP provider data or connection is nil",
+                )
+                return
+        }</span>
+        
+        <span class="cov8" title="1">if entry, err := GetEntry(L.providerData.Conn, data.DN.ValueString()); err != nil </span><span class="cov0" title="0">{
+                response.Diagnostics.AddError(
+                        "Can not read entry",
+                        err.Error(),
+                )
+        }</span> else<span class="cov8" title="1"> {
+                response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("dn"), entry.DN)...)
+                ctx = MaskAttributesFromArray(ctx, entry.Attributes)
+                for _, attribute := range entry.Attributes </span><span class="cov8" title="1">{
+                        if attribute.Name == "objectClass" </span><span class="cov8" title="1">{
+                                response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("object_classes"), attribute.Values)...)
+                        }</span> else<span class="cov8" title="1"> if !L.isIgnored(ctx, attribute.Name, data, response.Diagnostics) &amp;&amp; !isSystemAttribute(attribute.Name) </span><span class="cov8" title="1">{
+                                encodedValues := encodeAttributeValues(attribute.Name, attribute.Values)
+                                // Convert string slice to set for new schema
+                                setValue, diags := types.SetValueFrom(ctx, types.StringType, encodedValues)
+                                response.Diagnostics.Append(diags...)
+                                if !response.Diagnostics.HasError() </span><span class="cov8" title="1">{
+                                        response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("attributes").AtMapKey(attribute.Name), setValue)...)
+                                }</span>
+                        }
+                }
+                
+                <span class="cov8" title="1">tflog.Debug(ctx, "Read entry", map[string]interface{}{"entry": ToLDIF(entry)})</span>
+        }
+}
+
+func (L *LDAPObjectResource) Update(ctx context.Context, request resource.UpdateRequest, response *resource.UpdateResponse) <span class="cov8" title="1">{
+        var stateData *LDAPObjectResourceModel
+        var planData *LDAPObjectResourceModel
+        response.Diagnostics.Append(request.State.Get(ctx, &amp;stateData)...)
+        response.Diagnostics.Append(request.Plan.Get(ctx, &amp;planData)...)
+        if response.Diagnostics.HasError() </span><span class="cov0" title="0">{
+                return
+        }</span>
+
+        // Recreate object if DN changed
+        <span class="cov8" title="1">if stateData.DN.ValueString() != planData.DN.ValueString() </span><span class="cov8" title="1">{
+                tflog.Warn(ctx, "Recreating entry because the DN changed", map[string]interface{}{
+                        "oldDn": stateData.DN.ValueString(),
+                        "dn":    planData.DN.ValueString(),
+                })
+
+                if err := L.providerData.Conn.Del(ldap.NewDelRequest(stateData.DN.ValueString(), []ldap.Control{})); err != nil </span><span class="cov0" title="0">{
+                        response.Diagnostics.AddError(
+                                "Can not delete old DN entry",
+                                fmt.Sprintf("Trying to delete entry of old DN returned: %s", err),
+                        )
+                        return
+                }</span>
+                <span class="cov8" title="1">if err := L.addLdapEntry(ctx, planData, &amp;response.Diagnostics); err != nil </span><span class="cov0" title="0">{
+                        response.Diagnostics.AddError(
+                                "Can not add resource",
+                                fmt.Sprintf("LDAP server reported: %s", err),
+                        )
+                        return
+                }</span>
+        } else<span class="cov8" title="1"> {
+                r := ldap.NewModifyRequest(planData.DN.ValueString(), []ldap.Control{})
+
+                var stateObjectClasses []string
+                response.Diagnostics.Append(stateData.ObjectClasses.ElementsAs(ctx, &amp;stateObjectClasses, false)...)
+                var planObjectClasses []string
+                response.Diagnostics.Append(planData.ObjectClasses.ElementsAs(ctx, &amp;planObjectClasses, false)...)
+
+                var classesToAdd []string
+                for _, class := range planObjectClasses </span><span class="cov8" title="1">{
+                        if funk.IndexOf(stateObjectClasses, class) == -1 </span><span class="cov8" title="1">{
+                                classesToAdd = append(classesToAdd, class)
+                        }</span>
+                }
+
+                <span class="cov8" title="1">if len(classesToAdd) &gt; 0 </span><span class="cov8" title="1">{
+                        r.Add("objectClass", classesToAdd)
+                }</span>
+
+                <span class="cov8" title="1">var stateAttributes map[string][]string
+                response.Diagnostics.Append(stateData.Attributes.ElementsAs(ctx, &amp;stateAttributes, false)...)
+                var planAttributes map[string][]string
+                response.Diagnostics.Append(planData.Attributes.ElementsAs(ctx, &amp;planAttributes, false)...)
+                ctx = MaskAttributes(ctx, stateAttributes)
+                ctx = MaskAttributes(ctx, planAttributes)
+
+                // No member attribute processing - handled at module level via data sources
+
+                for attributeType, stateValues := range stateAttributes </span><span class="cov8" title="1">{
+                        if L.isIgnored(ctx, attributeType, stateData, response.Diagnostics) || isSystemAttribute(attributeType) || isTerraformOnlyAttribute(attributeType) </span><span class="cov8" title="1">{
+                                continue</span>
+                        }
+                        // state attribute is in the plan, compare the values
+                        <span class="cov8" title="1">if planValues, exists := planAttributes[attributeType]; exists </span><span class="cov8" title="1">{
+                                // For binary attributes, encode the plan values for comparison
+                                encodedPlanValues := encodeAttributeValues(attributeType, planValues)
+                                
+                                valuesChanged := false
+                                for _, stateValue := range stateValues </span><span class="cov8" title="1">{
+                                        if !funk.ContainsString(encodedPlanValues, stateValue) </span><span class="cov8" title="1">{
+                                                valuesChanged = true
+                                        }</span>
+                                }
+                                <span class="cov8" title="1">for _, encodedPlanValue := range encodedPlanValues </span><span class="cov8" title="1">{
+                                        if !funk.ContainsString(stateValues, encodedPlanValue) </span><span class="cov8" title="1">{
+                                                valuesChanged = true
+                                        }</span>
+                                }
+                                <span class="cov8" title="1">if valuesChanged </span><span class="cov8" title="1">{
+                                        tflog.Debug(ctx, "Changing attribute", map[string]interface{}{"type": attributeType})
+                                        // Use decoded values for LDAP operations
+                                        decodedValues := decodeAttributeValues(attributeType, encodedPlanValues)
+                                        r.Replace(attributeType, decodedValues)
+                                }</span>
+                        } else<span class="cov0" title="0"> {
+                                tflog.Debug(ctx, "Removing attribute", map[string]interface{}{
+                                        "type": attributeType,
+                                })
+                                r.Delete(attributeType, []string{})
+                        }</span>
+                }
+                <span class="cov8" title="1">for attributeType, values := range planAttributes </span><span class="cov8" title="1">{
+                        if L.isIgnored(ctx, attributeType, planData, response.Diagnostics) || isSystemAttribute(attributeType) || isTerraformOnlyAttribute(attributeType) </span><span class="cov8" title="1">{
+                                continue</span>
+                        }
+                        <span class="cov8" title="1">if _, exists := stateAttributes[attributeType]; !exists </span><span class="cov8" title="1">{
+                                tflog.Debug(ctx, "Adding attribute", map[string]interface{}{
+                                        "type": attributeType,
+                                })
+                                // For binary attributes, decode the values before adding to LDAP
+                                decodedValues := decodeAttributeValues(attributeType, values)
+                                r.Add(attributeType, decodedValues)
+                        }</span>
+                }
+                
+                // Final safety check: never send system-managed attributes back to LDAP.
+                <span class="cov8" title="1">originalChangeCount := len(r.Changes)
+                var filteredChanges []ldap.Change
+                for _, change := range r.Changes </span><span class="cov8" title="1">{
+                        if isSystemAttribute(change.Modification.Type) </span><span class="cov0" title="0">{
+                                tflog.Error(ctx, "CRITICAL: Attempted to modify system attribute - BLOCKING", map[string]interface{}{
+                                        "dn": planData.DN.ValueString(),
+                                        "system_attribute": change.Modification.Type,
+                                        "operation": change.Operation,
+                                })
+                                // Skip this change to prevent LDAP error
+                        }</span> else<span class="cov8" title="1"> {
+                                filteredChanges = append(filteredChanges, change)
+                        }</span>
+                }
+                <span class="cov8" title="1">r.Changes = filteredChanges
+                
+                if len(filteredChanges) != originalChangeCount </span><span class="cov0" title="0">{
+                        tflog.Warn(ctx, "Filtered system attributes from LDAP modify request", map[string]interface{}{
+                                "dn": planData.DN.ValueString(),
+                                "original_operations": originalChangeCount,
+                                "filtered_operations": len(filteredChanges),
+                        })
+                }</span>
+                
+                // Fix for empty LDAP ModifyRequest - AD rejects empty modifications with Error 53
+                <span class="cov8" title="1">if len(r.Changes) == 0 </span><span class="cov0" title="0">{
+                        tflog.Debug(ctx, "No LDAP changes needed - skipping modify operation", map[string]interface{}{
+                                "dn": planData.DN.ValueString(),
+                        })
+                        // Skip empty modifications that AD rejects with "Unwilling To Perform"
+                }</span> else<span class="cov8" title="1"> {
+                        if err := L.providerData.Conn.Modify(r); err != nil </span><span class="cov8" title="1">{
+                                response.Diagnostics.AddError(
+                                        "Can not modify entry",
+                                        fmt.Sprintf("LDAP server reported: %s", err),
+                                )
+                                return
+                        }</span>
+                }
+        }
+        
+        <span class="cov8" title="1">planData.ID = planData.DN
+        response.Diagnostics.Append(response.State.Set(ctx, &amp;planData)...)</span>
+}
+
+func (L *LDAPObjectResource) Delete(ctx context.Context, request resource.DeleteRequest, response *resource.DeleteResponse) <span class="cov8" title="1">{
+        var stateData *LDAPObjectResourceModel
+        response.Diagnostics.Append(request.State.Get(ctx, &amp;stateData)...)
+        if response.Diagnostics.HasError() </span><span class="cov0" title="0">{
+                return
+        }</span>
+
+        <span class="cov8" title="1">tflog.Debug(ctx, "Deleting entry", map[string]interface{}{"dn": stateData.DN.ValueString()})
+        if err := L.providerData.Conn.Del(ldap.NewDelRequest(stateData.DN.ValueString(), []ldap.Control{})); err != nil </span><span class="cov8" title="1">{
+                response.Diagnostics.AddError(
+                        "Can not delete entry",
+                        fmt.Sprintf("Trying to delete entry returned: %s", err),
+                )
+                return
+        }</span>
+}
+
+func (L *LDAPObjectResource) ImportState(ctx context.Context, request resource.ImportStateRequest, response *resource.ImportStateResponse) <span class="cov8" title="1">{
+        tflog.Info(ctx, "Importing entry", map[string]interface{}{"dn": request.ID})
+        if entry, err := GetEntry(L.providerData.Conn, request.ID); err != nil </span><span class="cov8" title="1">{
+                response.Diagnostics.AddError(
+                        "Can not read entry",
+                        err.Error(),
+                )
+        }</span> else<span class="cov8" title="1"> {
+                resource.ImportStatePassthroughID(ctx, path.Root("id"), request, response)
+                ctx = MaskAttributesFromArray(ctx, entry.Attributes)
+                response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("dn"), entry.DN)...)
+                for _, attribute := range entry.Attributes </span><span class="cov8" title="1">{
+                        if attribute.Name == "objectClass" </span><span class="cov8" title="1">{
+                                response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("object_classes"), attribute.Values)...)
+                        }</span> else<span class="cov8" title="1"> if !isSystemAttribute(attribute.Name) </span><span class="cov8" title="1">{
+                                encodedValues := encodeAttributeValues(attribute.Name, attribute.Values)
+                                response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("attributes").AtMapKey(attribute.Name), encodedValues)...)
+                        }</span>
+                }
+                
+                <span class="cov8" title="1">tflog.Debug(ctx, "Imported entry", map[string]interface{}{
+                        "entry": ToLDIF(entry),
+                })</span>
+        }
+}
+
+func (L *LDAPObjectResource) ModifyPlan(ctx context.Context, request resource.ModifyPlanRequest, response *resource.ModifyPlanResponse) <span class="cov8" title="1">{
+        tflog.Info(ctx, "ModifyPlan: Starting input transformation", map[string]interface{}{
+                "operation": "input_transformation",
+        })
+        
+        var stateData *LDAPObjectResourceModel
+        var planData *LDAPObjectResourceModel
+
+        response.Diagnostics.Append(request.State.Get(ctx, &amp;stateData)...)
+        response.Diagnostics.Append(request.Plan.Get(ctx, &amp;planData)...)
+        if response.Diagnostics.HasError() </span><span class="cov0" title="0">{
+                return
+        }</span>
+
+        // Handle create/delete operations
+        <span class="cov8" title="1">if planData == nil </span><span class="cov0" title="0">{
+                tflog.Info(ctx, "ModifyPlan: Delete operation - no plan modifications needed")
+                return
+        }</span>
+
+        // Handle DN changes (affects ID)
+        <span class="cov8" title="1">if stateData != nil &amp;&amp; stateData.DN.ValueString() != planData.DN.ValueString() </span><span class="cov8" title="1">{
+                response.Diagnostics.Append(response.Plan.SetAttribute(ctx, path.Root("id"), types.StringUnknown())...)
+                if response.Diagnostics.HasError() </span><span class="cov0" title="0">{
+                        return
+                }</span>
+        }
+
+        // No transformation in ModifyPlan - transformation happens in CREATE/UPDATE operations only
+        // This avoids Terraform plan validation issues with Optional+Computed attributes
+
+        // Handle system attributes and ignored attributes
+        <span class="cov8" title="1">if stateData != nil </span><span class="cov8" title="1">{
+                var stateAttributes map[string][]string
+                response.Diagnostics.Append(stateData.Attributes.ElementsAs(ctx, &amp;stateAttributes, false)...)
+                if !response.Diagnostics.HasError() &amp;&amp; stateAttributes != nil </span><span class="cov8" title="1">{
+                        // Get plan attributes for system attribute handling
+                        var planAttributes map[string][]string
+                        response.Diagnostics.Append(planData.Attributes.ElementsAs(ctx, &amp;planAttributes, false)...)
+                        if !response.Diagnostics.HasError() &amp;&amp; planAttributes != nil </span><span class="cov8" title="1">{
+                                for attributeType := range planAttributes </span><span class="cov8" title="1">{
+                                        if L.isIgnored(ctx, attributeType, planData, response.Diagnostics) || isSystemAttribute(attributeType) </span><span class="cov0" title="0">{
+                                                if stateValue, exists := stateAttributes[attributeType]; exists </span><span class="cov0" title="0">{
+                                                        response.Diagnostics.Append(response.Plan.SetAttribute(ctx, path.Root("attributes").AtMapKey(attributeType), stateValue)...)
+                                                }</span>
+                                        }
+                                }
+                        }
+
+                        <span class="cov8" title="1">for attributeType := range stateAttributes </span><span class="cov8" title="1">{
+                                if L.isIgnored(ctx, attributeType, planData, response.Diagnostics) || isSystemAttribute(attributeType) </span><span class="cov8" title="1">{
+                                        // Re-add attributes to the plan that were ignored and removed to not manage them
+                                        response.Diagnostics.Append(response.Plan.SetAttribute(ctx, path.Root("attributes").AtMapKey(attributeType), stateAttributes[attributeType])...)
+                                }</span>
+                        }
+                }
+        }
+}
+
+// isReferentialAttribute determines if an LDAP attribute contains references to other objects
+func isReferentialAttribute(attributeName string) bool <span class="cov8" title="1">{
+        referentialAttributes := []string{"member", "uniqueMember", "roleOccupant", "owner"}
+        for _, attr := range referentialAttributes </span><span class="cov8" title="1">{
+                if attr == attributeName </span><span class="cov8" title="1">{
+                        return true
+                }</span>
+        }
+        <span class="cov8" title="1">return false</span>
+}
+
+// hasReferentialAttributeChanges checks if the plan contains changes to attributes that could be affected by LDAP referential integrity
+func (L *LDAPObjectResource) hasReferentialAttributeChanges(ctx context.Context, stateAttributes, planAttributes map[string][]string) bool <span class="cov8" title="1">{
+        for _, attrName := range []string{"member", "uniqueMember", "roleOccupant", "owner"} </span><span class="cov8" title="1">{
+                stateValues := stateAttributes[attrName]
+                planValues := planAttributes[attrName]
+                
+                // Check if there are differences in referential attributes
+                if !areStringSlicesEqualAsSet(stateValues, planValues) </span><span class="cov8" title="1">{
+                        tflog.Debug(ctx, "Found referential attribute change", map[string]interface{}{
+                                "attribute": attrName,
+                                "state":     stateValues,
+                                "plan":      planValues,
+                        })
+                        return true
+                }</span>
+        }
+        
+        <span class="cov0" title="0">return false</span>
+}
+
+// refreshLDAPState refreshes the LDAP state for an object by reading directly from LDAP
+func (L *LDAPObjectResource) refreshLDAPState(ctx context.Context, dn string) (map[string][]string, error) <span class="cov8" title="1">{
+        entry, err := GetEntry(L.providerData.Conn, dn)
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("failed to read LDAP entry %s: %w", dn, err)
+        }</span>
+
+        <span class="cov8" title="1">refreshedAttributes := make(map[string][]string)
+        ctx = MaskAttributesFromArray(ctx, entry.Attributes)
+        
+        for _, attribute := range entry.Attributes </span><span class="cov8" title="1">{
+                if attribute.Name != "objectClass" &amp;&amp; !isSystemAttribute(attribute.Name) </span><span class="cov8" title="1">{
+                        encodedValues := encodeAttributeValues(attribute.Name, attribute.Values)
+                        refreshedAttributes[attribute.Name] = encodedValues
+                }</span>
+        }
+        
+        <span class="cov8" title="1">tflog.Debug(ctx, "Refreshed LDAP state", map[string]interface{}{
+                "dn":         dn,
+                "attributes": refreshedAttributes,
+        })
+        
+        return refreshedAttributes, nil</span>
+}
+
+func (L *LDAPObjectResource) addLdapEntry(ctx context.Context, data *LDAPObjectResourceModel, diagnostics *diag.Diagnostics) error <span class="cov8" title="1">{
+        var objectClasses []string
+        diagnostics.Append(data.ObjectClasses.ElementsAs(ctx, &amp;objectClasses, false)...)
+        if diagnostics.HasError() </span><span class="cov0" title="0">{
+                return errors.New("error converting data")
+        }</span>
+
+        // Extract attributes as sets, then convert to string slices for LDAP operations
+        <span class="cov8" title="1">var attributeSets map[string]types.Set
+        diagnostics.Append(data.Attributes.ElementsAs(ctx, &amp;attributeSets, false)...)
+        if diagnostics.HasError() </span><span class="cov0" title="0">{
+                return errors.New("error converting attribute sets")
+        }</span>
+        
+        // Convert sets to string slices for LDAP library compatibility
+        <span class="cov8" title="1">attributes := make(map[string][]string)
+        for attrName, attrSet := range attributeSets </span><span class="cov8" title="1">{
+                if !attrSet.IsNull() &amp;&amp; !attrSet.IsUnknown() </span><span class="cov8" title="1">{
+                        var stringValues []string
+                        diagnostics.Append(attrSet.ElementsAs(ctx, &amp;stringValues, false)...)
+                        if diagnostics.HasError() </span><span class="cov0" title="0">{
+                                return errors.New("error converting set to string slice for attribute: " + attrName)
+                        }</span>
+                        <span class="cov8" title="1">attributes[attrName] = stringValues</span>
+                }
+        }
+
+        // No member attribute processing - handled at module level via data sources
+
+        <span class="cov8" title="1">tflog.Info(ctx, "Adding new item", map[string]interface{}{
+                "dn":          data.DN.ValueString(),
+                "objectClass": objectClasses,
+                "attributes":  attributes,
+        })
+        a := ldap.NewAddRequest(data.DN.ValueString(), []ldap.Control{})
+        a.Attribute("objectClass", objectClasses)
+
+        ctx = MaskAttributes(ctx, attributes)
+
+        for attributeType, values := range attributes </span><span class="cov8" title="1">{
+                if isSystemAttribute(attributeType) || isTerraformOnlyAttribute(attributeType) </span><span class="cov8" title="1">{
+                        continue</span>
+                }
+                // For binary attributes, decode the values before adding to LDAP
+                <span class="cov8" title="1">decodedValues := decodeAttributeValues(attributeType, values)
+                a.Attribute(attributeType, decodedValues)</span>
+        }
+
+        <span class="cov8" title="1">tflog.Debug(ctx, "Adding LDAP entry", map[string]interface{}{
+                "entry": ToLDIF(a),
+        })
+
+        return L.providerData.Conn.Add(a)</span>
+}
+
+func (L *LDAPObjectResource) isIgnored(ctx context.Context, attributeType string, data *LDAPObjectResourceModel, diagnostics diag.Diagnostics) bool <span class="cov8" title="1">{
+        var ignoredAttributes []string
+        diagnostics.Append(data.IgnoreChanges.ElementsAs(ctx, &amp;ignoredAttributes, false)...)
+
+        if diagnostics.HasError() </span><span class="cov0" title="0">{
+                return false
+        }</span>
+        <span class="cov8" title="1">return funk.ContainsString(ignoredAttributes, attributeType)</span>
+}
+
+// resolveCNtoDN searches for a user by CN and returns their current DN
+func (L *LDAPObjectResource) resolveCNtoDN(ctx context.Context, cn string) (string, error) <span class="cov8" title="1">{
+        if L.providerData.UsersOU == "" </span><span class="cov8" title="1">{
+                return "", fmt.Errorf("users_ou not configured in provider - cannot resolve CN '%s'", cn)
+        }</span>
+
+        <span class="cov8" title="1">searchBases := []string{L.providerData.UsersOU}
+        
+        // Add disabled users OU if it's different from users OU
+        if L.providerData.DisabledUsersOU != "" &amp;&amp; L.providerData.DisabledUsersOU != L.providerData.UsersOU </span><span class="cov8" title="1">{
+                searchBases = append(searchBases, L.providerData.DisabledUsersOU)
+        }</span>
+
+        <span class="cov8" title="1">for _, baseDN := range searchBases </span><span class="cov8" title="1">{
+                tflog.Debug(ctx, "Searching for user by CN", map[string]interface{}{
+                        "cn": cn,
+                        "baseDN": baseDN,
+                })
+
+                searchRequest := ldap.NewSearchRequest(
+                        baseDN,
+                        ldap.ScopeWholeSubtree,
+                        ldap.NeverDerefAliases,
+                        0, 0, false,
+                        fmt.Sprintf("(&amp;(objectClass=user)(cn=%s))", ldap.EscapeFilter(cn)),
+                        []string{"distinguishedName"},
+                        nil,
+                )
+
+                sr, err := L.providerData.Conn.Search(searchRequest)
+                if err != nil </span><span class="cov8" title="1">{
+                        tflog.Warn(ctx, "Error searching for user", map[string]interface{}{
+                                "cn": cn,
+                                "baseDN": baseDN,
+                                "error": err.Error(),
+                        })
+                        continue</span>
+                }
+
+                <span class="cov8" title="1">if len(sr.Entries) == 1 </span><span class="cov8" title="1">{
+                        dn := sr.Entries[0].DN
+                        tflog.Debug(ctx, "Resolved CN to DN", map[string]interface{}{
+                                "cn": cn,
+                                "dn": dn,
+                        })
+                        return dn, nil
+                }</span> else<span class="cov0" title="0"> if len(sr.Entries) &gt; 1 </span><span class="cov0" title="0">{
+                        return "", fmt.Errorf("multiple users found with CN '%s' in %s", cn, baseDN)
+                }</span>
+        }
+
+        <span class="cov8" title="1">return "", fmt.Errorf("user with CN '%s' not found in configured search bases", cn)</span>
+}
+
+// resolveMemberCNs converts a list of CNs to their current DNs
+func (L *LDAPObjectResource) resolveMemberCNs(ctx context.Context, memberCNs []string) ([]string, error) <span class="cov8" title="1">{
+        var resolvedDNs []string
+        
+        for _, cn := range memberCNs </span><span class="cov8" title="1">{
+                dn, err := L.resolveCNtoDN(ctx, cn)
+                if err != nil </span><span class="cov0" title="0">{
+                        return nil, fmt.Errorf("failed to resolve CN '%s': %w", cn, err)
+                }</span>
+                <span class="cov8" title="1">resolvedDNs = append(resolvedDNs, dn)</span>
+        }
+        
+        <span class="cov8" title="1">return resolvedDNs, nil</span>
+}
+
+// resolveSAMToDN searches for a user by sAMAccountName and returns their current DN
+func (L *LDAPObjectResource) resolveSAMToDN(ctx context.Context, samAccountName string) (string, error) <span class="cov8" title="1">{
+        tflog.Info(ctx, "=== resolveSAMToDN ENTRY ===", map[string]interface{}{
+                "samAccountName": samAccountName,
+                "users_ou": L.providerData.UsersOU,
+                "disabled_users_ou": L.providerData.DisabledUsersOU,
+        })
+        
+        if L.providerData.UsersOU == "" </span><span class="cov8" title="1">{
+                tflog.Error(ctx, "users_ou not configured in provider", map[string]interface{}{
+                        "samAccountName": samAccountName,
+                })
+                return "", fmt.Errorf("users_ou not configured in provider - cannot resolve sAMAccountName '%s'", samAccountName)
+        }</span>
+
+        <span class="cov8" title="1">searchBases := []string{L.providerData.UsersOU}
+        
+        // Add disabled users OU if it's different from users OU
+        if L.providerData.DisabledUsersOU != "" &amp;&amp; L.providerData.DisabledUsersOU != L.providerData.UsersOU </span><span class="cov8" title="1">{
+                searchBases = append(searchBases, L.providerData.DisabledUsersOU)
+        }</span>
+        
+        <span class="cov8" title="1">tflog.Info(ctx, "Will search these bases for SAM", map[string]interface{}{
+                "samAccountName": samAccountName,
+                "searchBases": searchBases,
+        })
+
+        for _, baseDN := range searchBases </span><span class="cov8" title="1">{
+                tflog.Debug(ctx, "Searching for user by sAMAccountName", map[string]interface{}{
+                        "sAMAccountName": samAccountName,
+                        "baseDN": baseDN,
+                })
+
+                // Use more efficient objectCategory=Person instead of objectClass=user
+                searchRequest := ldap.NewSearchRequest(
+                        baseDN,
+                        ldap.ScopeWholeSubtree,
+                        ldap.NeverDerefAliases,
+                        0, 0, false,
+                        fmt.Sprintf("(&amp;(objectCategory=Person)(sAMAccountName=%s))", ldap.EscapeFilter(samAccountName)),
+                        []string{"distinguishedName"},
+                        nil,
+                )
+
+                sr, err := L.providerData.Conn.Search(searchRequest)
+                if err != nil </span><span class="cov8" title="1">{
+                        tflog.Warn(ctx, "Error searching for user by sAMAccountName", map[string]interface{}{
+                                "sAMAccountName": samAccountName,
+                                "baseDN": baseDN,
+                                "error": err.Error(),
+                        })
+                        continue</span>
+                }
+
+                <span class="cov8" title="1">tflog.Info(ctx, "LDAP search completed", map[string]interface{}{
+                        "sAMAccountName": samAccountName,
+                        "baseDN": baseDN,
+                        "entries_found": len(sr.Entries),
+                })
+
+                if len(sr.Entries) == 1 </span><span class="cov8" title="1">{
+                        dn := sr.Entries[0].DN
+                        tflog.Info(ctx, "Successfully resolved sAMAccountName to DN", map[string]interface{}{
+                                "sAMAccountName": samAccountName,
+                                "dn": dn,
+                                "baseDN": baseDN,
+                        })
+                        return dn, nil
+                }</span> else<span class="cov8" title="1"> if len(sr.Entries) &gt; 1 </span><span class="cov0" title="0">{
+                        tflog.Error(ctx, "Multiple users found with same sAMAccountName", map[string]interface{}{
+                                "sAMAccountName": samAccountName,
+                                "baseDN": baseDN,
+                                "count": len(sr.Entries),
+                        })
+                        return "", fmt.Errorf("multiple users found with sAMAccountName '%s' in %s", samAccountName, baseDN)
+                }</span> else<span class="cov8" title="1"> {
+                        tflog.Info(ctx, "No user found in this search base", map[string]interface{}{
+                                "sAMAccountName": samAccountName,
+                                "baseDN": baseDN,
+                        })
+                }</span>
+        }
+
+        <span class="cov8" title="1">return "", fmt.Errorf("user with sAMAccountName '%s' not found in configured search bases", samAccountName)</span>
+}
+
+// resolveMemberSAMs converts a list of sAMAccountNames to their current DNs
+func (L *LDAPObjectResource) resolveMemberSAMs(ctx context.Context, memberSAMs []string) ([]string, error) <span class="cov8" title="1">{
+        var resolvedDNs []string
+        
+        tflog.Info(ctx, "=== resolveMemberSAMs ENTRY ===", map[string]interface{}{
+                "memberSAMs": memberSAMs,
+                "count": len(memberSAMs),
+        })
+        
+        for i, sam := range memberSAMs </span><span class="cov8" title="1">{
+                tflog.Info(ctx, "Resolving individual SAM", map[string]interface{}{
+                        "sam": sam,
+                        "index": i,
+                })
+                
+                dn, err := L.resolveSAMToDN(ctx, sam)
+                
+                tflog.Info(ctx, "Individual SAM resolution result", map[string]interface{}{
+                        "sam": sam,
+                        "dn": dn,
+                        "error": err,
+                })
+                
+                if err != nil </span><span class="cov0" title="0">{
+                        tflog.Error(ctx, "Failed to resolve SAM to DN", map[string]interface{}{
+                                "sam": sam,
+                                "error": err.Error(),
+                        })
+                        return nil, fmt.Errorf("failed to resolve sAMAccountName '%s': %w", sam, err)
+                }</span>
+                <span class="cov8" title="1">resolvedDNs = append(resolvedDNs, dn)</span>
+        }
+        
+        <span class="cov8" title="1">tflog.Info(ctx, "=== resolveMemberSAMs EXIT ===", map[string]interface{}{
+                "input_count": len(memberSAMs),
+                "resolved_count": len(resolvedDNs),
+                "resolved_dns": resolvedDNs,
+        })
+        
+        return resolvedDNs, nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file5" style="display: none">package provider
+
+import (
+        "context"
+        "fmt"
+        "github.com/go-ldap/ldap/v3"
+        "github.com/hashicorp/terraform-plugin-framework/datasource"
+        "github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+        "github.com/hashicorp/terraform-plugin-framework/types"
+        "github.com/hashicorp/terraform-plugin-log/tflog"
+)
+
+var _ datasource.DataSource = &amp;LDAPSAMLookupDataSource{}
+var _ datasource.DataSourceWithConfigure = &amp;LDAPSAMLookupDataSource{}
+
+func NewLDAPSAMLookupDataSource() datasource.DataSource <span class="cov8" title="1">{
+        return &amp;LDAPSAMLookupDataSource{}
+}</span>
+
+type LDAPSAMLookupDataSource struct {
+        providerData *LDAPProviderData
+}
+
+type LDAPSAMLookupDatasourceModel struct {
+        Id             types.String `tfsdk:"id"`
+        SAMAccountName types.String `tfsdk:"sam_account_name"`
+        DN             types.String `tfsdk:"dn"`
+        Found          types.Bool   `tfsdk:"found"`
+        RequireFound   types.Bool   `tfsdk:"require_found"`
+}
+
+func (L *LDAPSAMLookupDataSource) Metadata(_ context.Context, request datasource.MetadataRequest, response *datasource.MetadataResponse) <span class="cov8" title="1">{
+        response.TypeName = request.ProviderTypeName + "_sam_lookup"
+}</span>
+
+func (L *LDAPSAMLookupDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, response *datasource.SchemaResponse) <span class="cov8" title="1">{
+        response.Schema = schema.Schema{
+                MarkdownDescription: "LDAP SAM account name to DN lookup datasource",
+                Attributes: map[string]schema.Attribute{
+                        "id": schema.StringAttribute{
+                                Computed:            true,
+                                MarkdownDescription: "Datasource identifier",
+                        },
+                        "sam_account_name": schema.StringAttribute{
+                                MarkdownDescription: "SAM account name to lookup",
+                                Required:            true,
+                        },
+                        "dn": schema.StringAttribute{
+                                MarkdownDescription: "Distinguished name of the user (empty if not found)",
+                                Computed:            true,
+                        },
+                        "found": schema.BoolAttribute{
+                                MarkdownDescription: "Whether the user was found",
+                                Computed:            true,
+                        },
+                        "require_found": schema.BoolAttribute{
+                                MarkdownDescription: "Whether to return an error if the user is not found (default: false)",
+                                Optional:            true,
+                        },
+                },
+        }
+}</span>
+
+func (L *LDAPSAMLookupDataSource) Configure(_ context.Context, request datasource.ConfigureRequest, response *datasource.ConfigureResponse) <span class="cov8" title="1">{
+        if request.ProviderData == nil </span><span class="cov8" title="1">{
+                return
+        }</span>
+
+        <span class="cov8" title="1">if providerData, ok := request.ProviderData.(*LDAPProviderData); !ok </span><span class="cov8" title="1">{
+                response.Diagnostics.AddError(
+                        "Unexpected Datasource Configure Type",
+                        fmt.Sprintf("Expected *LDAPProviderData, got: %T. Please report this issue to the provider developers.", request.ProviderData),
+                )
+                return
+        }</span> else<span class="cov8" title="1"> {
+                L.providerData = providerData
+        }</span>
+}
+
+func (L *LDAPSAMLookupDataSource) Read(ctx context.Context, request datasource.ReadRequest, response *datasource.ReadResponse) <span class="cov8" title="1">{
+        var data LDAPSAMLookupDatasourceModel
+        response.Diagnostics.Append(request.Config.Get(ctx, &amp;data)...)
+
+        if response.Diagnostics.HasError() </span><span class="cov0" title="0">{
+                return
+        }</span>
+
+        <span class="cov8" title="1">samAccountName := data.SAMAccountName.ValueString()
+        
+        // Set the ID for this datasource
+        data.Id = types.StringValue(fmt.Sprintf("sam_lookup_%s", samAccountName))
+
+        tflog.Debug(ctx, "Looking up SAM account", map[string]interface{}{
+                "sam_account_name": samAccountName,
+                "users_ou":         L.providerData.UsersOU,
+                "disabled_users_ou": L.providerData.DisabledUsersOU,
+        })
+
+        // Create cache key for SAM lookup
+        rawKey := fmt.Sprintf("sam:%s", samAccountName)
+        
+        // Perform cached lookup
+        dn, found := L.providerData.cachedUserLookup(ctx, rawKey, func() (string, bool) </span><span class="cov8" title="1">{
+                tflog.Info(ctx, "LDAP lookup function called", map[string]interface{}{
+                        "sam_account_name": samAccountName,
+                        "users_ou":         L.providerData.UsersOU,
+                        "disabled_users_ou": L.providerData.DisabledUsersOU,
+                })
+                
+                // Search for user by sAMAccountName
+                filter := fmt.Sprintf("(&amp;(objectCategory=Person)(sAMAccountName=%s))", ldap.EscapeFilter(samAccountName))
+                
+                // Try active users first
+                if L.providerData.UsersOU != "" </span><span class="cov8" title="1">{
+                        tflog.Info(ctx, "Searching in users OU", map[string]interface{}{
+                                "base_dn": L.providerData.UsersOU,
+                                "filter":  filter,
+                        })
+                        if dn := L.searchForUser(ctx, L.providerData.UsersOU, filter); dn != "" </span><span class="cov8" title="1">{
+                                tflog.Info(ctx, "User found in users OU", map[string]interface{}{"dn": dn})
+                                return dn, true
+                        }</span>
+                }
+
+                // Try disabled users if configured
+                <span class="cov8" title="1">if L.providerData.DisabledUsersOU != "" </span><span class="cov0" title="0">{
+                        tflog.Info(ctx, "Searching in disabled users OU", map[string]interface{}{
+                                "base_dn": L.providerData.DisabledUsersOU,
+                                "filter":  filter,
+                        })
+                        if dn := L.searchForUser(ctx, L.providerData.DisabledUsersOU, filter); dn != "" </span><span class="cov0" title="0">{
+                                tflog.Info(ctx, "User found in disabled users OU", map[string]interface{}{"dn": dn})
+                                return dn, true
+                        }</span>
+                }
+
+                // User not found
+                <span class="cov8" title="1">tflog.Info(ctx, "User not found in any OU", map[string]interface{}{
+                        "sam_account_name": samAccountName,
+                })
+                return "", false</span>
+        })
+        
+        // Set the results
+        <span class="cov8" title="1">data.DN = types.StringValue(dn)
+        data.Found = types.BoolValue(found)
+        
+        // Check if require_found is enabled and user not found
+        if !data.RequireFound.IsNull() &amp;&amp; data.RequireFound.ValueBool() &amp;&amp; !found </span><span class="cov0" title="0">{
+                response.Diagnostics.AddError(
+                        "SAM account not found",
+                        fmt.Sprintf("SAM account '%s' was not found in the configured OUs and require_found is true", samAccountName),
+                )
+                return
+        }</span>
+        
+        <span class="cov8" title="1">tflog.Debug(ctx, "SAM account not found", map[string]interface{}{
+                "sam_account_name": samAccountName,
+        })
+
+        response.Diagnostics.Append(response.State.Set(ctx, &amp;data)...)</span>
+}
+
+// searchForUser performs LDAP search and returns DN if found, empty string if not found
+func (L *LDAPSAMLookupDataSource) searchForUser(ctx context.Context, baseDN, filter string) string <span class="cov8" title="1">{
+        s := ldap.NewSearchRequest(baseDN, ldap.ScopeWholeSubtree, 0, 0, 0, false, filter, []string{}, []ldap.Control{})
+
+        result, err := L.providerData.Conn.Search(s)
+        if err != nil </span><span class="cov8" title="1">{
+                tflog.Warn(ctx, "LDAP search failed", map[string]interface{}{
+                        "base_dn": baseDN,
+                        "filter":  filter,
+                        "error":   err.Error(),
+                })
+                return ""
+        }</span>
+
+        <span class="cov8" title="1">if len(result.Entries) &gt; 0 </span><span class="cov8" title="1">{
+                dn := result.Entries[0].DN
+                tflog.Debug(ctx, "User found", map[string]interface{}{
+                        "base_dn": baseDN,
+                        "filter":  filter,
+                        "dn":      dn,
+                })
+                return dn
+        }</span>
+
+        <span class="cov8" title="1">return ""</span>
+}
+</pre>
+		
+		<pre class="file" id="file6" style="display: none">package provider
+
+import (
+        "context"
+        "fmt"
+        "github.com/go-ldap/ldap/v3"
+        "github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+        "github.com/hashicorp/terraform-plugin-framework/datasource"
+        "github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+        "github.com/hashicorp/terraform-plugin-framework/path"
+        "github.com/hashicorp/terraform-plugin-framework/schema/validator"
+        "github.com/hashicorp/terraform-plugin-framework/types"
+        "github.com/hashicorp/terraform-plugin-log/tflog"
+)
+
+var _ datasource.DataSource = &amp;LDAPSearchDataSource{}
+var _ datasource.DataSourceWithConfigure = &amp;LDAPSearchDataSource{}
+
+func NewLDAPSearchDataSource() datasource.DataSource <span class="cov8" title="1">{
+        return &amp;LDAPSearchDataSource{}
+}</span>
+
+type LDAPSearchDataSource struct {
+        providerData *LDAPProviderData
+}
+
+type LDAPSearchDatasourceModel struct {
+        Id                   types.String `tfsdk:"id"`
+        BaseDN               types.String `tfsdk:"base_dn"`
+        Scope                types.String `tfsdk:"scope"`
+        Filter               types.String `tfsdk:"filter"`
+        Results              types.List   `tfsdk:"results"`
+        AdditionalAttributes types.Set    `tfsdk:"additional_attributes"`
+}
+
+func (L *LDAPSearchDataSource) Metadata(_ context.Context, request datasource.MetadataRequest, response *datasource.MetadataResponse) <span class="cov8" title="1">{
+        response.TypeName = request.ProviderTypeName + "_search"
+}</span>
+
+func (L *LDAPSearchDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, response *datasource.SchemaResponse) <span class="cov8" title="1">{
+        response.Schema = schema.Schema{
+                MarkdownDescription: "Generic LDAP search datasource",
+                Attributes: map[string]schema.Attribute{
+                        "id": schema.StringAttribute{
+                                Computed:            true,
+                                MarkdownDescription: "Datasource identifier",
+                        },
+                        "base_dn": schema.StringAttribute{
+                                MarkdownDescription: "Base DN to use to search for LDAP objects",
+                                Optional:            true,
+                        },
+                        "scope": schema.StringAttribute{
+                                MarkdownDescription: "Scope to use to search for LDAP objects",
+                                Optional:            true,
+                                Validators: []validator.String{
+                                        stringvalidator.OneOf("baseObject", "singleLevel", "wholeSubtree"),
+                                },
+                        },
+                        "filter": schema.StringAttribute{
+                                MarkdownDescription: "Filter to search for LDAP objects with",
+                                Optional:            true,
+                        },
+                        "additional_attributes": schema.SetAttribute{
+                                MarkdownDescription: "Any additional attributes to request, such as constructed or operational attributes",
+                                Optional:            true,
+                                ElementType:         types.StringType,
+                        },
+                        "results": schema.ListAttribute{
+                                MarkdownDescription: "List of LDAP objects returned from the search",
+                                Computed:            true,
+                                ElementType: types.MapType{
+                                        ElemType: types.ListType{ElemType: types.StringType},
+                                },
+                        },
+                },
+        }
+}</span>
+
+func (L *LDAPSearchDataSource) Configure(_ context.Context, request datasource.ConfigureRequest, response *datasource.ConfigureResponse) <span class="cov8" title="1">{
+        if request.ProviderData == nil </span><span class="cov8" title="1">{
+                return
+        }</span>
+
+        <span class="cov8" title="1">if providerData, ok := request.ProviderData.(*LDAPProviderData); !ok </span><span class="cov8" title="1">{
+                response.Diagnostics.AddError(
+                        "Unexpected Datasource Configure Type",
+                        fmt.Sprintf("Expected *LDAPProviderData, got: %T. Please report this issue to the provider developers.", request.ProviderData),
+                )
+
+                return
+        }</span> else<span class="cov8" title="1"> {
+                L.providerData = providerData
+        }</span>
+}
+
+func (L *LDAPSearchDataSource) Read(ctx context.Context, request datasource.ReadRequest, response *datasource.ReadResponse) <span class="cov8" title="1">{
+        var data LDAPSearchDatasourceModel
+        response.Diagnostics.Append(request.Config.Get(ctx, &amp;data)...)
+
+        var additionalAttributes []string
+        response.Diagnostics.Append(data.AdditionalAttributes.ElementsAs(ctx, &amp;additionalAttributes, false)...)
+
+        var scope int
+
+        if data.Scope.IsUnknown() || data.Scope.IsNull() </span><span class="cov0" title="0">{
+                scope = ldap.ScopeBaseObject
+        }</span> else<span class="cov8" title="1"> {
+                switch data.Scope.ValueString() </span>{
+                case "baseObject":<span class="cov8" title="1">
+                        scope = ldap.ScopeBaseObject</span>
+                case "singleLevel":<span class="cov0" title="0">
+                        scope = ldap.ScopeSingleLevel</span>
+                case "wholeSubtree":<span class="cov8" title="1">
+                        scope = ldap.ScopeWholeSubtree</span>
+                }
+        }
+
+        <span class="cov8" title="1">var filter string
+
+        if data.Filter.IsUnknown() || data.Filter.IsNull() </span><span class="cov8" title="1">{
+                filter = "(&amp;)"
+        }</span> else<span class="cov8" title="1"> {
+                filter = data.Filter.ValueString()
+        }</span>
+
+        <span class="cov8" title="1">response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("id"), fmt.Sprintf("%s/%s/%s", data.BaseDN.ValueString(), data.Scope.ValueString(), filter))...)
+        if response.Diagnostics.HasError() </span><span class="cov0" title="0">{
+                return
+        }</span>
+
+        <span class="cov8" title="1">tflog.Debug(ctx, "Searching for ldap entries", map[string]interface{}{
+                "baseDN":               data.BaseDN.ValueString(),
+                "scope":                scope,
+                "filter":               filter,
+                "additionalAttributes": additionalAttributes,
+        })
+
+        s := ldap.NewSearchRequest(data.BaseDN.ValueString(), scope, 0, 0, 0, false, filter, append(additionalAttributes, "*"), []ldap.Control{})
+
+        if result, err := L.providerData.Conn.Search(s); err != nil </span><span class="cov8" title="1">{
+                response.Diagnostics.AddError(
+                        "Can not read entry",
+                        err.Error(),
+                )
+        }</span> else<span class="cov8" title="1"> {
+                // Build complete results structure first, then set atomically
+                var results []map[string][]string
+                
+                for _, entry := range result.Entries </span><span class="cov8" title="1">{
+                        ctx := MaskAttributesFromArray(ctx, entry.Attributes)
+                        tflog.Debug(ctx, "Found entry", map[string]interface{}{
+                                "entry": ToLDIF(entry),
+                        })
+                        
+                        // Build complete entry map
+                        entryMap := make(map[string][]string)
+                        
+                        // Add DN first - with debug logging
+                        entryMap["dn"] = []string{entry.DN}
+                        tflog.Debug(ctx, "Setting DN field", map[string]interface{}{
+                                "dn_value": entry.DN,
+                                "entry_map_keys_after_dn": len(entryMap),
+                        })
+                        
+                        // Add all other attributes
+                        for _, attribute := range entry.Attributes </span><span class="cov8" title="1">{
+                                if !isSystemAttribute(attribute.Name) </span><span class="cov8" title="1">{
+                                        encodedValues := encodeAttributeValues(attribute.Name, attribute.Values)
+                                        entryMap[attribute.Name] = encodedValues
+                                }</span>
+                        }
+                        
+                        <span class="cov8" title="1">tflog.Debug(ctx, "Complete entry map built", map[string]interface{}{
+                                "total_keys": len(entryMap),
+                                "has_dn_key": entryMap["dn"] != nil,
+                                "dn_values": entryMap["dn"],
+                        })
+                        
+                        results = append(results, entryMap)</span>
+                }
+                
+                // Set complete results structure once
+                <span class="cov8" title="1">response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("results"), results)...)</span>
+        }
+}
+</pre>
+		
+		<pre class="file" id="file7" style="display: none">package provider
+
+import (
+        "context"
+        "fmt"
+        "github.com/hashicorp/terraform-plugin-log/tflog"
+        "io"
+        "os"
+)
+
+// TFLoggerAdapter is a Writer which is provided by the ldap package as a logger and logs using tflog.Debug.
+type TFLoggerAdapter struct {
+        ctx context.Context
+}
+
+func (T TFLoggerAdapter) Write(p []byte) (n int, err error) <span class="cov8" title="1">{
+        if os.Getenv("TF_LOG") != "DEBUG" </span><span class="cov8" title="1">{
+                return len(p), nil
+        }</span>
+        <span class="cov8" title="1">tflog.Debug(T.ctx, fmt.Sprintf("LDAP log output: %s", p))
+        return len(p), nil</span>
+}
+
+var _ io.Writer = TFLoggerAdapter{}
+</pre>
+		
+		<pre class="file" id="file8" style="display: none">package provider
+
+import (
+        "context"
+        "crypto/sha256"
+        "crypto/tls"
+        "fmt"
+        "github.com/go-ldap/ldap/v3"
+        "github.com/hashicorp/terraform-plugin-framework/datasource"
+        "github.com/hashicorp/terraform-plugin-framework/provider"
+        "github.com/hashicorp/terraform-plugin-framework/provider/schema"
+        "github.com/hashicorp/terraform-plugin-framework/resource"
+        "github.com/hashicorp/terraform-plugin-framework/types"
+        "github.com/hashicorp/terraform-plugin-log/tflog"
+        "log"
+        "net"
+        "net/url"
+        "os"
+        "strings"
+        "sync"
+        "time"
+)
+
+// UserLookupCacheEntry represents a cached user lookup result
+type UserLookupCacheEntry struct {
+        DN    string // Distinguished name if found, empty if not found
+        Found bool   // Whether the user was found
+}
+
+// LDAPProviderData contains the LDAP connection and configuration
+type LDAPProviderData struct {
+        Conn            ldapClient
+        UsersOU         string
+        DisabledUsersOU string
+        // User lookup cache to prevent redundant LDAP queries within a single Terraform run
+        userLookupCache map[string]UserLookupCacheEntry
+        cacheMutex      sync.RWMutex
+}
+
+// Ensure LDAPProvider satisfies various provider interfaces.
+var _ provider.Provider = &amp;LDAPProvider{}
+
+// LDAPProvider defines the provider implementation.
+type LDAPProvider struct {
+        // version is set to the provider version on release, "dev" when the
+        // provider is built and ran locally, and "test" when running acceptance
+        // testing.
+        version string
+}
+
+// LDAPProviderModel describes the provider data model.
+type LDAPProviderModel struct {
+        LDAPURL               types.String `tfsdk:"ldap_url"`
+        LDAPBindDN            types.String `tfsdk:"ldap_bind_dn"`
+        LDAPBindPassword      types.String `tfsdk:"ldap_bind_password"`
+        LDAPTLSInsecureVerify types.Bool   `tfsdk:"ldap_tls_insecure_verify"`
+        LDAPTLSUseStartTLS    types.Bool   `tfsdk:"ldap_tls_use_starttls"`
+        UsersOU               types.String `tfsdk:"users_ou"`
+        DisabledUsersOU       types.String `tfsdk:"disabled_users_ou"`
+}
+
+func (p *LDAPProvider) Metadata(_ context.Context, _ provider.MetadataRequest, resp *provider.MetadataResponse) <span class="cov8" title="1">{
+        resp.TypeName = "ldap"
+        resp.Version = p.version
+}</span>
+
+func (p *LDAPProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *provider.SchemaResponse) <span class="cov8" title="1">{
+        resp.Schema = schema.Schema{
+                MarkdownDescription: `Terraform provider to manage and read entries in an LDAP directory.
+
+Inspired by [elastic-infra/ldap](https://registry.terraform.io/providers/elastic-infra/ldap/latest), but updated to
+Terraform Framework and including ignoring attributes and a data source.
+
+All provider options can be set by the respective environment variables as well.
+`,
+                Attributes: map[string]schema.Attribute{
+                        "ldap_url": schema.StringAttribute{
+                                MarkdownDescription: "LDAP URL to managed server (`LDAP_URL`)",
+                                Optional:            true,
+                        },
+                        "ldap_bind_dn": schema.StringAttribute{
+                                MarkdownDescription: "Bind DN used to manage directory (`LDAP_BIND_DN`)",
+                                Optional:            true,
+                        },
+                        "ldap_bind_password": schema.StringAttribute{
+                                MarkdownDescription: "Bind password (`LDAP_BIND_PASSWORD`)",
+                                Optional:            true,
+                                Sensitive:           true,
+                        },
+                        "ldap_tls_insecure_verify": schema.BoolAttribute{
+                                MarkdownDescription: "Whether to skip certificate verification (`LDAP_TLS_INSECURE_VERIFY`)",
+                                Optional:            true,
+                        },
+                        "ldap_tls_use_starttls": schema.BoolAttribute{
+                                MarkdownDescription: "Whether to connect using STARTTLS (`LDAP_TLS_USE_STARTTLS`)",
+                                Optional:            true,
+                        },
+                        "users_ou": schema.StringAttribute{
+                                MarkdownDescription: "Base DN for searching active users when resolving member_cn attributes (`LDAP_USERS_OU`)",
+                                Optional:            true,
+                        },
+                        "disabled_users_ou": schema.StringAttribute{
+                                MarkdownDescription: "Base DN for searching disabled users when resolving member_cn attributes. Defaults to users_ou if not specified (`LDAP_DISABLED_USERS_OU`)",
+                                Optional:            true,
+                        },
+                },
+        }
+}</span>
+
+func (p *LDAPProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) <span class="cov8" title="1">{
+        tflog.Debug(ctx, "Checking configuration")
+        ldapUrl := os.Getenv("LDAP_URL")
+        ldapBindDN := os.Getenv("LDAP_BIND_DN")
+        ldapBindPassword := os.Getenv("LDAP_BIND_PASSWORD")
+        ldapTLSInsecureVerify := false
+        if v := os.Getenv("LDAP_TLS_INSECURE_VERIFY"); v != "" </span><span class="cov8" title="1">{
+                ldapTLSInsecureVerify = strings.ToUpper(v) == "TRUE"
+        }</span>
+
+        <span class="cov8" title="1">ldapTLSUseStartTLS := false
+        if v := os.Getenv("LDAP_TLS_USE_STARTTLS"); v != "" </span><span class="cov8" title="1">{
+                ldapTLSUseStartTLS = strings.ToUpper(v) == "TRUE"
+        }</span>
+
+        <span class="cov8" title="1">ldapUsersOU := os.Getenv("LDAP_USERS_OU")
+        ldapDisabledUsersOU := os.Getenv("LDAP_DISABLED_USERS_OU")
+
+        var data LDAPProviderModel
+        resp.Diagnostics.Append(req.Config.Get(ctx, &amp;data)...)
+        if resp.Diagnostics.HasError() </span><span class="cov0" title="0">{
+                return
+        }</span>
+
+        <span class="cov8" title="1">if data.LDAPURL.ValueString() != "" </span><span class="cov8" title="1">{
+                ldapUrl = data.LDAPURL.ValueString()
+        }</span>
+
+        <span class="cov8" title="1">if data.LDAPBindDN.ValueString() != "" </span><span class="cov8" title="1">{
+                ldapBindDN = data.LDAPBindDN.ValueString()
+        }</span>
+
+        <span class="cov8" title="1">if data.LDAPBindPassword.ValueString() != "" </span><span class="cov8" title="1">{
+                ldapBindPassword = data.LDAPBindPassword.ValueString()
+        }</span>
+
+        <span class="cov8" title="1">if !data.LDAPTLSInsecureVerify.IsNull() </span><span class="cov0" title="0">{
+                ldapTLSInsecureVerify = data.LDAPTLSInsecureVerify.ValueBool()
+        }</span>
+
+        <span class="cov8" title="1">if !data.LDAPTLSUseStartTLS.IsNull() </span><span class="cov8" title="1">{
+                ldapTLSUseStartTLS = data.LDAPTLSUseStartTLS.ValueBool()
+        }</span>
+
+        <span class="cov8" title="1">if data.UsersOU.ValueString() != "" </span><span class="cov8" title="1">{
+                ldapUsersOU = data.UsersOU.ValueString()
+        }</span>
+
+        <span class="cov8" title="1">if data.DisabledUsersOU.ValueString() != "" </span><span class="cov8" title="1">{
+                ldapDisabledUsersOU = data.DisabledUsersOU.ValueString()
+        }</span>
+
+        <span class="cov8" title="1">if ldapUrl == "" </span><span class="cov8" title="1">{
+                resp.Diagnostics.AddError(
+                        "No LDAP url specified",
+                        "Configure the ldap_url attribute or LDAP_URL environment variable for the provider",
+                )
+                return
+        }</span>
+
+        <span class="cov8" title="1">if ldapBindDN == "" </span><span class="cov8" title="1">{
+                resp.Diagnostics.AddError(
+                        "No LDAP bind dn specified",
+                        "Configure the ldap_bind_dn attribute or LDAP_BIND_DN environment variable for the provider",
+                )
+                return
+        }</span>
+
+        <span class="cov8" title="1">if ldapBindPassword == "" </span><span class="cov8" title="1">{
+                resp.Diagnostics.AddError(
+                        "No LDAP bind password specified",
+                        "Configure the ldap_bind_password attribute or LDAP_BIND_PASSWORD environment variable for the provider",
+                )
+                return
+        }</span>
+
+        <span class="cov8" title="1">ctx = tflog.MaskLogStrings(ctx, ldapBindPassword)
+
+        parsedLDAPURL, err := url.Parse(ldapUrl)
+        if err != nil </span><span class="cov8" title="1">{
+                resp.Diagnostics.AddError(
+                        "Invalid LDAP URL",
+                        fmt.Sprintf("Could not parse LDAP URL %q: %s", ldapUrl, err),
+                )
+                return
+        }</span>
+
+        <span class="cov8" title="1">switch parsedLDAPURL.Scheme </span>{
+        case "ldaps":<span class="cov8" title="1">
+                if ldapTLSUseStartTLS </span><span class="cov8" title="1">{
+                        resp.Diagnostics.AddError(
+                                "Invalid LDAP TLS configuration",
+                                "ldap_tls_use_starttls cannot be enabled when ldap_url already uses the ldaps:// scheme",
+                        )
+                        return
+                }</span>
+        case "ldap":<span class="cov8" title="1">
+                if !ldapTLSUseStartTLS </span><span class="cov8" title="1">{
+                        resp.Diagnostics.AddError(
+                                "Insecure LDAP configuration",
+                                "Refusing to bind over ldap:// without STARTTLS. Use ldaps:// or set ldap_tls_use_starttls = true.",
+                        )
+                        return
+                }</span>
+        default:<span class="cov8" title="1">
+                resp.Diagnostics.AddError(
+                        "Unsupported LDAP URL scheme",
+                        fmt.Sprintf("LDAP URL %q must use ldap:// or ldaps://", ldapUrl),
+                )
+                return</span>
+        }
+
+        <span class="cov8" title="1">loggerAdapter := TFLoggerAdapter{ctx: ctx}
+        logger := log.New(loggerAdapter, "", log.LstdFlags)
+        ldap.Logger(logger)
+
+        tlsConfig := &amp;tls.Config{
+                MinVersion:         tls.VersionTLS12,
+                InsecureSkipVerify: ldapTLSInsecureVerify,
+        }
+        if host := parsedLDAPURL.Hostname(); host != "" </span><span class="cov8" title="1">{
+                tlsConfig.ServerName = host
+        }</span>
+
+        <span class="cov8" title="1">o := []ldap.DialOpt{
+                ldap.DialWithDialer(&amp;net.Dialer{Timeout: 10 * time.Second}),
+        }
+
+        if ldapTLSInsecureVerify </span><span class="cov8" title="1">{
+                tflog.Debug(ctx, "Connecting insecurely to the LDAP server")
+        }</span>
+
+        <span class="cov8" title="1">if parsedLDAPURL.Scheme == "ldaps" </span><span class="cov8" title="1">{
+                o = append(o, ldap.DialWithTLSConfig(tlsConfig))
+        }</span>
+
+        <span class="cov8" title="1">tflog.Debug(ctx, "Connecting to LDAP server", map[string]interface{}{"url": ldapUrl})
+        if conn, err := ldapDialURL(ldapUrl, o...); err != nil </span><span class="cov8" title="1">{
+                resp.Diagnostics.AddError(
+                        "Can't connect to LDAP server",
+                        fmt.Sprintf("Error connecting to LDAP server: %s", err),
+                )
+                return
+        }</span> else<span class="cov8" title="1"> {
+                conn.SetDebug(os.Getenv("TF_LOG") == "DEBUG")
+                if ldapTLSUseStartTLS </span><span class="cov8" title="1">{
+                        tflog.Debug(ctx, "Connecting using StartTLS")
+                        if err := conn.StartTLS(tlsConfig); err != nil </span><span class="cov8" title="1">{
+                                _ = conn.Close()
+                                resp.Diagnostics.AddError(
+                                        "Can't start TLS",
+                                        fmt.Sprintf("Error starting TLS: %s", err),
+                                )
+                                return
+                        }</span>
+                }
+                <span class="cov8" title="1">tflog.Debug(ctx, "Binding to LDAP server", map[string]interface{}{"bindDN": ldapBindDN})
+                if err := conn.Bind(ldapBindDN, ldapBindPassword); err != nil </span><span class="cov8" title="1">{
+                        _ = conn.Close()
+                        resp.Diagnostics.AddError(
+                                "Can't bind to LDAP server",
+                                fmt.Sprintf("Error binding to LDAP server: %s", err),
+                        )
+                        return
+                }</span>
+
+                // Default disabled_users_ou to users_ou if not specified
+                <span class="cov8" title="1">if ldapDisabledUsersOU == "" </span><span class="cov8" title="1">{
+                        ldapDisabledUsersOU = ldapUsersOU
+                }</span>
+
+                <span class="cov8" title="1">providerData := &amp;LDAPProviderData{
+                        Conn:            conn,
+                        UsersOU:         ldapUsersOU,
+                        DisabledUsersOU: ldapDisabledUsersOU,
+                        userLookupCache: make(map[string]UserLookupCacheEntry),
+                }
+
+                resp.DataSourceData = providerData
+                resp.ResourceData = providerData</span>
+        }
+}
+
+func (p *LDAPProvider) Resources(_ context.Context) []func() resource.Resource <span class="cov8" title="1">{
+        return []func() resource.Resource{
+                NewLDAPObjectResource,
+        }
+}</span>
+
+func (p *LDAPProvider) DataSources(_ context.Context) []func() datasource.DataSource <span class="cov8" title="1">{
+        return []func() datasource.DataSource{
+                NewLDAPObjectDataSource,
+                NewLDAPSearchDataSource,
+                NewLDAPSAMLookupDataSource,
+                NewLDAPCNLookupDataSource,
+        }
+}</span>
+
+// generateCacheKey creates a FIPS 140-3 compliant checksummed cache key from the raw key components
+func generateCacheKey(rawKey string) string <span class="cov8" title="1">{
+        hasher := sha256.New()
+        hasher.Write([]byte(rawKey))
+        return fmt.Sprintf("%x", hasher.Sum(nil))
+}</span>
+
+// cachedUserLookup performs a user lookup with caching support
+func (p *LDAPProviderData) cachedUserLookup(ctx context.Context, rawKey string, lookupFunc func() (string, bool)) (string, bool) <span class="cov8" title="1">{
+        // Generate checksummed cache key
+        cacheKey := generateCacheKey(rawKey)
+        
+        // Check cache first (read lock)
+        p.cacheMutex.RLock()
+        if entry, exists := p.userLookupCache[cacheKey]; exists </span><span class="cov8" title="1">{
+                p.cacheMutex.RUnlock()
+                tflog.Debug(ctx, "User lookup cache hit", map[string]interface{}{
+                        "cache_key_raw":  rawKey,
+                        "cache_key_hash": cacheKey,
+                        "found":         entry.Found,
+                })
+                return entry.DN, entry.Found
+        }</span>
+        <span class="cov8" title="1">p.cacheMutex.RUnlock()
+        
+        // Cache miss - perform LDAP lookup
+        tflog.Debug(ctx, "User lookup cache miss - performing LDAP query", map[string]interface{}{
+                "cache_key_raw":  rawKey,
+                "cache_key_hash": cacheKey,
+        })
+        
+        dn, found := lookupFunc()
+        
+        // Store result in cache (write lock)
+        p.cacheMutex.Lock()
+        p.userLookupCache[cacheKey] = UserLookupCacheEntry{
+                DN:    dn,
+                Found: found,
+        }
+        p.cacheMutex.Unlock()
+        
+        tflog.Debug(ctx, "User lookup result cached", map[string]interface{}{
+                "cache_key_raw":  rawKey,
+                "cache_key_hash": cacheKey,
+                "found":         found,
+        })
+        
+        return dn, found</span>
+}
+
+func New(version string) func() provider.Provider <span class="cov8" title="1">{
+        return func() provider.Provider </span><span class="cov8" title="1">{
+                return &amp;LDAPProvider{
+                        version: version,
+                }
+        }</span>
+}
+</pre>
+		
+		<pre class="file" id="file9" style="display: none">package provider
+
+import (
+        "context"
+        "encoding/base64"
+        "fmt"
+        "github.com/go-ldap/ldap/v3"
+        "github.com/go-ldap/ldif"
+        "github.com/hashicorp/terraform-plugin-log/tflog"
+        "github.com/thoas/go-funk"
+        "strings"
+)
+
+// GetEntry returns a specific entry and is a shortcut around the search function.
+func GetEntry(conn ldapClient, dn string, attrs ...string) (ldap.Entry, error) <span class="cov8" title="1">{
+        s := ldap.NewSearchRequest(dn, ldap.ScopeBaseObject, 0, 0, 0, false, "(&amp;)", attrs, []ldap.Control{})
+
+        if result, err := conn.Search(s); err != nil </span><span class="cov8" title="1">{
+                return ldap.Entry{}, err
+        }</span> else<span class="cov8" title="1"> {
+                if len(result.Entries) != 1 </span><span class="cov8" title="1">{
+                        return ldap.Entry{}, fmt.Errorf("search returned %d results", len(result.Entries))
+                }</span>
+                <span class="cov8" title="1">return *result.Entries[0], nil</span>
+        }
+}
+
+// ToLDIF converts the given ldap entry into an LDIF representation.
+func ToLDIF(entry interface{}) string <span class="cov8" title="1">{
+        if l, err := ldif.ToLDIF(entry); err == nil </span><span class="cov8" title="1">{
+                if m, err := ldif.Marshal(l); err == nil </span><span class="cov8" title="1">{
+                        return m
+                }</span>
+        }
+        <span class="cov8" title="1">return ""</span>
+}
+
+// MaskAttributes searches attributes of an LDAP entry for sensitive data and masks the values.
+func MaskAttributes(ctx context.Context, attributes map[string][]string) context.Context <span class="cov8" title="1">{
+        for attributeType, values := range attributes </span><span class="cov8" title="1">{
+                if isSensitiveAttribute(attributeType) </span><span class="cov8" title="1">{
+                        funk.ForEach(values, func(value string) </span><span class="cov8" title="1">{
+                                ctx = tflog.MaskLogStrings(ctx, value)
+                        }</span>)
+                }
+        }
+        <span class="cov8" title="1">return ctx</span>
+}
+
+func isSensitiveAttribute(name string) bool <span class="cov8" title="1">{
+        return strings.EqualFold(name, "userPassword") || strings.EqualFold(name, "unicodePwd")
+}</span>
+
+// MaskAttributesFromArray is a MaskAttributes adapter for ldap.EntryAttribute-Arrays.
+func MaskAttributesFromArray(ctx context.Context, attributes []*ldap.EntryAttribute) context.Context <span class="cov8" title="1">{
+        var attributesHash = funk.Reduce(
+                attributes,
+                func(acc map[string][]string, a *ldap.EntryAttribute) map[string][]string </span><span class="cov8" title="1">{
+                        acc[a.Name] = a.Values
+                        return acc
+                }</span>,
+                make(map[string][]string),
+        )
+        <span class="cov8" title="1">if h, ok := attributesHash.(map[string][]string); !ok </span><span class="cov0" title="0">{
+                return ctx
+        }</span> else<span class="cov8" title="1"> {
+                return MaskAttributes(ctx, h)
+        }</span>
+}
+
+// isBinaryAttribute checks if an attribute should be stored as base64
+func isBinaryAttribute(name string) bool <span class="cov8" title="1">{
+        return name == "objectGUID" || name == "objectSid"
+}</span>
+
+// isSystemAttribute checks if an attribute should be excluded from modifications
+func isSystemAttribute(name string) bool <span class="cov8" title="1">{
+        return name == "objectGUID" || 
+                   name == "objectSid" ||
+                   name == "distinguishedName" ||
+                   name == "dSCorePropagationData" ||
+                   name == "instanceType" ||
+                   name == "whenCreated" ||
+                   name == "whenChanged" ||
+                   name == "uSNCreated" ||
+                   name == "uSNChanged" ||
+                   name == "memberOf"
+}</span>
+
+// isTerraformOnlyAttribute returns true if the attribute is a Terraform-only attribute
+// that should never be sent to LDAP operations (it gets resolved to other attributes)
+func isTerraformOnlyAttribute(name string) bool <span class="cov8" title="1">{
+        return name == "member_cn" || name == "member_sam"
+}</span>
+
+// encodeAttributeValues encodes binary attribute values to base64
+func encodeAttributeValues(attributeName string, values []string) []string <span class="cov8" title="1">{
+        if !isBinaryAttribute(attributeName) </span><span class="cov8" title="1">{
+                return values
+        }</span>
+        
+        <span class="cov8" title="1">encodedValues := make([]string, len(values))
+        for i, value := range values </span><span class="cov8" title="1">{
+                encodedValues[i] = base64.StdEncoding.EncodeToString([]byte(value))
+        }</span>
+        <span class="cov8" title="1">return encodedValues</span>
+}
+
+// decodeAttributeValues decodes base64 attribute values back to binary
+func decodeAttributeValues(attributeName string, values []string) []string <span class="cov8" title="1">{
+        if !isBinaryAttribute(attributeName) </span><span class="cov8" title="1">{
+                return values
+        }</span>
+        
+        <span class="cov8" title="1">decodedValues := make([]string, len(values))
+        for i, value := range values </span><span class="cov8" title="1">{
+                if decoded, err := base64.StdEncoding.DecodeString(value); err == nil </span><span class="cov8" title="1">{
+                        decodedValues[i] = string(decoded)
+                }</span> else<span class="cov8" title="1"> {
+                        decodedValues[i] = value
+                }</span>
+        }
+        <span class="cov8" title="1">return decodedValues</span>
+}
+</pre>
+		
+		<pre class="file" id="file10" style="display: none">package provider
+
+import (
+        "context"
+        "fmt"
+        "sort"
+        "strings"
+
+        "github.com/hashicorp/terraform-plugin-framework/attr"
+        "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+        "github.com/hashicorp/terraform-plugin-framework/types"
+        "github.com/hashicorp/terraform-plugin-framework/types/basetypes"
+        "github.com/hashicorp/terraform-plugin-log/tflog"
+)
+
+// UnorderedListPlanModifier is a plan modifier that treats lists as unordered for comparison
+type UnorderedListPlanModifier struct {
+        attributeName string
+}
+
+// NewUnorderedListPlanModifier creates a new UnorderedListPlanModifier
+func NewUnorderedListPlanModifier(attributeName string) planmodifier.List <span class="cov8" title="1">{
+        return &amp;UnorderedListPlanModifier{
+                attributeName: attributeName,
+        }
+}</span>
+
+// Description returns a description of the plan modifier
+func (m *UnorderedListPlanModifier) Description(_ context.Context) string <span class="cov8" title="1">{
+        return fmt.Sprintf("Treats the %s attribute as an unordered list where element order is not significant", m.attributeName)
+}</span>
+
+// MarkdownDescription returns a markdown description of the plan modifier
+func (m *UnorderedListPlanModifier) MarkdownDescription(ctx context.Context) string <span class="cov8" title="1">{
+        return m.Description(ctx)
+}</span>
+
+// PlanModifyList implements the plan modifier logic
+func (m *UnorderedListPlanModifier) PlanModifyList(ctx context.Context, req planmodifier.ListRequest, resp *planmodifier.ListResponse) <span class="cov8" title="1">{
+        // Don't modify during creation or deletion
+        if req.StateValue.IsNull() || req.PlanValue.IsNull() </span><span class="cov0" title="0">{
+                return
+        }</span>
+
+        // Don't modify if the planned value is unknown
+        <span class="cov8" title="1">if req.PlanValue.IsUnknown() </span><span class="cov0" title="0">{
+                return
+        }</span>
+
+        // Extract the string values from both state and plan
+        <span class="cov8" title="1">var stateValues, planValues []string
+        
+        resp.Diagnostics.Append(req.StateValue.ElementsAs(ctx, &amp;stateValues, false)...)
+        resp.Diagnostics.Append(req.PlanValue.ElementsAs(ctx, &amp;planValues, false)...)
+        
+        if resp.Diagnostics.HasError() </span><span class="cov0" title="0">{
+                return
+        }</span>
+
+        // Compare as sets (order-independent)
+        <span class="cov8" title="1">if areStringSlicesEqualAsSet(stateValues, planValues) </span><span class="cov8" title="1">{
+                tflog.Debug(ctx, "Unordered list values are equivalent, preserving state ordering", map[string]interface{}{
+                        "attribute": m.attributeName,
+                        "state":     stateValues,
+                        "plan":      planValues,
+                })
+                
+                // Values are equivalent as sets, so keep the state value to avoid unnecessary updates
+                resp.PlanValue = req.StateValue
+        }</span>
+}
+
+// UnorderedMapListPlanModifier is a plan modifier for map attributes containing unordered lists
+type UnorderedMapListPlanModifier struct{}
+
+// NewUnorderedMapListPlanModifier creates a new UnorderedMapListPlanModifier
+func NewUnorderedMapListPlanModifier() planmodifier.Map <span class="cov8" title="1">{
+        return &amp;UnorderedMapListPlanModifier{}
+}</span>
+
+// Description returns a description of the plan modifier
+func (m *UnorderedMapListPlanModifier) Description(_ context.Context) string <span class="cov8" title="1">{
+        return "Treats certain map attributes as containing unordered lists where element order is not significant"
+}</span>
+
+// MarkdownDescription returns a markdown description of the plan modifier
+func (m *UnorderedMapListPlanModifier) MarkdownDescription(ctx context.Context) string <span class="cov8" title="1">{
+        return m.Description(ctx)
+}</span>
+
+// PlanModifyMap implements the plan modifier logic for map attributes
+func (m *UnorderedMapListPlanModifier) PlanModifyMap(ctx context.Context, req planmodifier.MapRequest, resp *planmodifier.MapResponse) <span class="cov8" title="1">{
+        tflog.Error(ctx, "UnorderedMapListPlanModifier: PlanModifyMap called")
+        
+        // Don't modify during creation or deletion
+        if req.StateValue.IsNull() || req.PlanValue.IsNull() </span><span class="cov8" title="1">{
+                tflog.Info(ctx, "UnorderedMapListPlanModifier: Skipping - null state or plan value", map[string]interface{}{
+                        "state_null": req.StateValue.IsNull(),
+                        "plan_null":  req.PlanValue.IsNull(),
+                })
+                return
+        }</span>
+
+        // Don't modify if the planned value is unknown
+        <span class="cov8" title="1">if req.PlanValue.IsUnknown() </span><span class="cov0" title="0">{
+                tflog.Info(ctx, "UnorderedMapListPlanModifier: Skipping - plan value is unknown")
+                return
+        }</span>
+
+        <span class="cov8" title="1">tflog.Error(ctx, "UnorderedMapListPlanModifier: Processing plan modification")
+        
+        // Extract the map values (now containing sets instead of lists)
+        var stateMap, planMap map[string]types.Set
+        
+        tflog.Info(ctx, "UnorderedMapListPlanModifier: Attempting extraction", map[string]interface{}{
+                "state_type": fmt.Sprintf("%T", req.StateValue),
+                "plan_type":  fmt.Sprintf("%T", req.PlanValue),
+                "state_null": req.StateValue.IsNull(),
+                "plan_null":  req.PlanValue.IsNull(),
+        })
+        
+        stateDiags := req.StateValue.ElementsAs(ctx, &amp;stateMap, false)
+        resp.Diagnostics.Append(stateDiags...)
+        if len(stateDiags) &gt; 0 </span><span class="cov0" title="0">{
+                tflog.Warn(ctx, "UnorderedMapListPlanModifier: State extraction errors", map[string]interface{}{
+                        "errors": stateDiags.Errors(),
+                })
+        }</span>
+        
+        <span class="cov8" title="1">planDiags := req.PlanValue.ElementsAs(ctx, &amp;planMap, false)
+        resp.Diagnostics.Append(planDiags...)
+        if len(planDiags) &gt; 0 </span><span class="cov0" title="0">{
+                tflog.Warn(ctx, "UnorderedMapListPlanModifier: Plan extraction errors", map[string]interface{}{
+                        "errors": planDiags.Errors(),
+                })
+        }</span>
+        
+        <span class="cov8" title="1">if resp.Diagnostics.HasError() </span><span class="cov0" title="0">{
+                tflog.Warn(ctx, "UnorderedMapListPlanModifier: Error extracting map values - aborting")
+                return
+        }</span>
+
+        <span class="cov8" title="1">tflog.Info(ctx, "UnorderedMapListPlanModifier: Extracted maps", map[string]interface{}{
+                "state_attrs": len(stateMap),
+                "plan_attrs":  len(planMap),
+        })
+
+        // Only process unordered attributes where there's a clear ordering-only difference
+        for attrName, planSet := range planMap </span><span class="cov8" title="1">{
+                stateSet, exists := stateMap[attrName]
+                isUnordered := isUnorderedAttribute(attrName)
+                
+                // Convert sets to string slices for processing
+                var stateValues, planValues []string
+                if exists &amp;&amp; !stateSet.IsNull() &amp;&amp; !stateSet.IsUnknown() </span><span class="cov8" title="1">{
+                        resp.Diagnostics.Append(stateSet.ElementsAs(ctx, &amp;stateValues, false)...)
+                }</span>
+                <span class="cov8" title="1">if !planSet.IsNull() &amp;&amp; !planSet.IsUnknown() </span><span class="cov8" title="1">{
+                        resp.Diagnostics.Append(planSet.ElementsAs(ctx, &amp;planValues, false)...)
+                }</span>
+                
+                <span class="cov8" title="1">if resp.Diagnostics.HasError() </span><span class="cov0" title="0">{
+                        tflog.Warn(ctx, "UnorderedMapListPlanModifier: Error converting sets to slices")
+                        return
+                }</span>
+                
+                <span class="cov8" title="1">tflog.Info(ctx, "UnorderedMapListPlanModifier: Checking attribute", map[string]interface{}{
+                        "attribute":       attrName,
+                        "exists_in_state": exists,
+                        "is_unordered":    isUnordered,
+                        "state_count":     len(stateValues),
+                        "plan_count":      len(planValues),
+                })
+                
+                if exists &amp;&amp; isUnordered </span><span class="cov8" title="1">{
+                        equalAsSet := areStringSlicesEqualAsSet(stateValues, planValues)
+                        exactlyEqual := areStringSlicesExactlyEqual(stateValues, planValues)
+                        
+                        tflog.Info(ctx, "UnorderedMapListPlanModifier: Comparison results", map[string]interface{}{
+                                "attribute":      attrName,
+                                "equal_as_set":   equalAsSet,
+                                "exactly_equal":  exactlyEqual,
+                                "state_values":   stateValues,
+                                "plan_values":    planValues,
+                        })
+                        
+                        if exactlyEqual </span><span class="cov0" title="0">{
+                                // No changes at all - skip processing
+                                tflog.Info(ctx, "UnorderedMapListPlanModifier: Values are exactly equal", map[string]interface{}{
+                                        "attribute": attrName,
+                                })
+                        }</span> else<span class="cov8" title="1"> if equalAsSet &amp;&amp; !exactlyEqual </span><span class="cov8" title="1">{
+                                // SCENARIO 1: Pure ordering changes (existing logic - PROVEN WORKING)
+                                tflog.Warn(ctx, "UnorderedMapListPlanModifier: PURE ORDERING DIFFERENCE - MODIFYING PLAN", map[string]interface{}{
+                                        "attribute":    attrName,
+                                        "state_order":  stateValues,
+                                        "plan_order":   planValues,
+                                })
+                                
+                                // Use state ordering to prevent churn
+                                resp.PlanValue = req.StateValue
+                                return
+                        }</span> else<span class="cov0" title="0"> {
+                                // SCENARIO 2: Mixed changes - detect pure ordering vs legitimate changes
+                                tflog.Info(ctx, "UnorderedMapListPlanModifier: Mixed changes detected - analyzing patterns", map[string]interface{}{
+                                        "attribute":     attrName,
+                                        "state_count":   len(stateValues),
+                                        "plan_count":    len(planValues),
+                                })
+                                
+                                // Analyze the change patterns using set operations
+                                stateSet := stringSliceToSet(stateValues)
+                                planSet := stringSliceToSet(planValues)
+                                additions := setDifference(planSet, stateSet)
+                                removals := setDifference(stateSet, planSet)
+                                existing := setIntersection(stateSet, planSet)
+                                
+                                tflog.Info(ctx, "UnorderedMapListPlanModifier: Mixed change analysis", map[string]interface{}{
+                                        "attribute":        attrName,
+                                        "additions_count":  len(additions),
+                                        "removals_count":   len(removals), 
+                                        "existing_count":   len(existing),
+                                })
+                                
+                                // DEBUG: Log actual DN content for analysis
+                                tflog.Info(ctx, "UnorderedMapListPlanModifier: DN Content Analysis", map[string]interface{}{
+                                        "attribute":     attrName,
+                                        "state_values":  stateValues,
+                                        "plan_values":   planValues,
+                                })
+                                
+                                // DEBUG: Log set content for detailed analysis
+                                additionsList := setToStringSlice(additions)
+                                removalsList := setToStringSlice(removals)
+                                tflog.Info(ctx, "UnorderedMapListPlanModifier: Set Content Analysis", map[string]interface{}{
+                                        "attribute":  attrName,
+                                        "additions":  additionsList,
+                                        "removals":   removalsList,
+                                })
+                                
+                                // OPTION 3: Enhanced detection for framework index misalignment
+                                // Detect actual reordering artifacts: DNs that appear in both additions and removals
+                                reorderingArtifacts := setIntersection(additions, removals)
+                                hasReorderingArtifacts := len(reorderingArtifacts) &gt; 0
+                                
+                                // Calculate real changes (legitimate additions/removals excluding reordering artifacts)
+                                realAdditions := setDifference(additions, reorderingArtifacts)
+                                realRemovals := setDifference(removals, reorderingArtifacts)
+                                
+                                tflog.Info(ctx, "UnorderedMapListPlanModifier: Framework index misalignment analysis", map[string]interface{}{
+                                        "attribute":                attrName,
+                                        "has_reordering_artifacts": hasReorderingArtifacts,
+                                        "reordering_count":         len(reorderingArtifacts),
+                                        "real_additions_count":     len(realAdditions),
+                                        "real_removals_count":      len(realRemovals),
+                                        "existing_count":           len(existing),
+                                })
+                                
+                                if hasReorderingArtifacts </span><span class="cov0" title="0">{
+                                        // DETECTED: Actual reordering artifacts - DNs appearing as both add+remove
+                                        tflog.Warn(ctx, "UnorderedMapListPlanModifier: REORDERING ARTIFACTS DETECTED - APPLYING SURGICAL FIX", map[string]interface{}{
+                                                "attribute":           attrName,
+                                                "artifacts":           len(reorderingArtifacts),
+                                                "real_additions":      len(realAdditions),
+                                                "real_removals":       len(realRemovals),
+                                                "state_values":        stateValues,
+                                                "plan_values":         planValues,
+                                        })
+                                        
+                                        // SURGICAL APPROACH: Only prevent reordering artifacts, allow legitimate changes
+                                        if len(realAdditions) == 0 &amp;&amp; len(realRemovals) == 0 </span><span class="cov0" title="0">{
+                                                // Pure reordering artifacts only - prevent all changes
+                                                tflog.Warn(ctx, "Pure reordering artifacts - preventing all changes")
+                                                resp.PlanValue = req.StateValue
+                                                return
+                                        }</span> else<span class="cov0" title="0"> {
+                                                // Mixed: reordering artifacts + legitimate changes
+                                                // This is complex - for now, allow through but log warning
+                                                tflog.Warn(ctx, "Mixed reordering artifacts with legitimate changes - allowing through for now")
+                                                // TODO: Implement surgical removal of only the reordering artifacts
+                                        }</span>
+                                } else<span class="cov0" title="0"> if len(removals) == 0 &amp;&amp; len(additions) &gt; 0 &amp;&amp; len(existing) &gt; 0 </span><span class="cov0" title="0">{
+                                        // Pure additions scenario with potential framework index misalignment
+                                        // Need to preserve state ordering for existing members and append legitimate additions
+                                        tflog.Warn(ctx, "UnorderedMapListPlanModifier: PURE ADDITIONS WITH REORDERING - FIXING PLAN", map[string]interface{}{
+                                                "attribute":         attrName,
+                                                "additions_count":   len(additions),
+                                                "existing_count":    len(existing),
+                                                "state_values":      stateValues,
+                                                "plan_values":       planValues,
+                                        })
+                                        
+                                        // Reconstruct plan: state ordering for existing + sorted additions
+                                        var reconstructed []string
+                                        
+                                        // 1. Add existing members in STATE order (prevents reordering artifacts)
+                                        for _, stateValue := range stateValues </span><span class="cov0" title="0">{
+                                                if _, exists := existing[stateValue]; exists </span><span class="cov0" title="0">{
+                                                        reconstructed = append(reconstructed, stateValue)
+                                                }</span>
+                                        }
+                                        
+                                        // 2. Add legitimate additions (sorted for consistency)
+                                        <span class="cov0" title="0">additionsList := setToStringSlice(additions)
+                                        sort.Strings(additionsList)
+                                        reconstructed = append(reconstructed, additionsList...)
+                                        
+                                        tflog.Warn(ctx, "UnorderedMapListPlanModifier: Reconstructed plan", map[string]interface{}{
+                                                "attribute":         attrName,
+                                                "original_plan":     planValues,
+                                                "reconstructed":     reconstructed,
+                                        })
+                                        
+                                        // Replace the plan with reconstructed version
+                                        // Reconstruct the MapValue with properly ordered member list
+                                        var planMapExtracted map[string]types.Set
+                                        planDiags := req.PlanValue.ElementsAs(ctx, &amp;planMapExtracted, false)
+                                        if len(planDiags) == 0 &amp;&amp; planMapExtracted != nil </span><span class="cov0" title="0">{
+                                                newPlanMap := make(map[string]types.Set)
+                                                
+                                                // Copy all attributes from the original plan
+                                                for attrName, attrValue := range planMapExtracted </span><span class="cov0" title="0">{
+                                                        if attrName == "member" </span><span class="cov0" title="0">{
+                                                                // Replace member attribute with reconstructed list
+                                                                reconstructedSet := types.SetValueMust(
+                                                                        types.StringType,
+                                                                        convertStringsToAttrValues(reconstructed),
+                                                                )
+                                                                newPlanMap[attrName] = reconstructedSet
+                                                        }</span> else<span class="cov0" title="0"> {
+                                                                // Keep other attributes unchanged
+                                                                newPlanMap[attrName] = attrValue
+                                                        }</span>
+                                                }
+                                                
+                                                // Create new plan value with reconstructed member list
+                                                <span class="cov0" title="0">mapType := req.PlanValue.Type(ctx).(basetypes.MapType)
+                                                newPlanValue := types.MapValueMust(
+                                                        mapType.ElemType,
+                                                        convertSetMapToValueMap(newPlanMap),
+                                                )
+                                                resp.PlanValue = newPlanValue</span>
+                                        }
+                                        <span class="cov0" title="0">return</span>
+                                } else<span class="cov0" title="0"> {
+                                        // No reordering artifacts detected - allow legitimate changes through
+                                        tflog.Info(ctx, "UnorderedMapListPlanModifier: No reordering artifacts - allowing legitimate changes", map[string]interface{}{
+                                                "attribute":    attrName,
+                                                "additions":    len(additions),
+                                                "removals":     len(removals),
+                                                "existing":     len(existing),
+                                        })
+                                }</span>
+                        }
+                }
+        }
+        
+        <span class="cov0" title="0">tflog.Info(ctx, "UnorderedMapListPlanModifier: No modifications needed")</span>
+}
+
+
+// filterValidReferences filters out references with malformed DN syntax
+// The main solution for referential integrity is LDAP state refresh (Solution 2)
+// This function only performs basic DN format validation as a safety net
+func filterValidReferences(ctx context.Context, references []string) []string <span class="cov8" title="1">{
+        var validReferences []string
+        
+        for _, ref := range references </span><span class="cov8" title="1">{
+                // Only filter out obviously malformed DNs
+                if !isValidDNFormat(ref) </span><span class="cov8" title="1">{
+                        tflog.Debug(ctx, "Filtered out malformed reference", map[string]interface{}{
+                                "reference": ref,
+                                "reason":    "invalid DN format",
+                        })
+                        continue</span>
+                }
+                
+                // Accept all properly formatted DNs - existence checking is handled by LDAP state refresh
+                <span class="cov8" title="1">validReferences = append(validReferences, ref)</span>
+        }
+        
+        <span class="cov8" title="1">return validReferences</span>
+}
+
+// isValidDNFormat performs basic DN format validation without hardcoded patterns
+func isValidDNFormat(dn string) bool <span class="cov8" title="1">{
+        if dn == "" </span><span class="cov8" title="1">{
+                return false
+        }</span>
+        
+        // Basic check for DN format (should contain = and at least one component)
+        <span class="cov8" title="1">if !strings.Contains(dn, "=") </span><span class="cov8" title="1">{
+                return false
+        }</span>
+        
+        // Check for basic DN structure: should have at least CN= or OU= etc.
+        <span class="cov8" title="1">dnComponents := []string{"CN=", "OU=", "DC=", "O=", "C=", "STREET=", "L=", "ST="}
+        hasValidComponent := false
+        
+        for _, component := range dnComponents </span><span class="cov8" title="1">{
+                if strings.Contains(strings.ToUpper(dn), component) </span><span class="cov8" title="1">{
+                        hasValidComponent = true
+                        break</span>
+                }
+        }
+        
+        <span class="cov8" title="1">return hasValidComponent</span>
+}
+
+// getInvalidReferences returns the difference between original and filtered references
+func getInvalidReferences(original, filtered []string) []string <span class="cov8" title="1">{
+        var invalid []string
+        filteredSet := make(map[string]bool)
+        
+        for _, ref := range filtered </span><span class="cov8" title="1">{
+                filteredSet[ref] = true
+        }</span>
+        
+        <span class="cov8" title="1">for _, ref := range original </span><span class="cov8" title="1">{
+                if !filteredSet[ref] </span><span class="cov8" title="1">{
+                        invalid = append(invalid, ref)
+                }</span>
+        }
+        
+        <span class="cov8" title="1">return invalid</span>
+}
+
+
+// areStringSlicesExactlyEqual checks if two string slices are exactly equal (same order, same elements)
+func areStringSlicesExactlyEqual(a, b []string) bool <span class="cov8" title="1">{
+        if len(a) != len(b) </span><span class="cov0" title="0">{
+                return false
+        }</span>
+        
+        <span class="cov8" title="1">for i := range a </span><span class="cov8" title="1">{
+                if a[i] != b[i] </span><span class="cov8" title="1">{
+                        return false
+                }</span>
+        }
+        
+        <span class="cov8" title="1">return true</span>
+}
+
+/*
+// MemberSAMResolutionPlanModifier - COMMENTED OUT DUE TO COMPILE ERRORS
+// TODO: Fix the compilation errors and re-enable
+type MemberSAMResolutionPlanModifier struct {
+        providerData *LDAPProviderData
+}
+*/
+
+// Helper functions for set operations
+
+// stringSliceToSet converts a string slice to a set (map[string]struct{})
+func stringSliceToSet(slice []string) map[string]struct{} <span class="cov8" title="1">{
+        set := make(map[string]struct{})
+        for _, s := range slice </span><span class="cov8" title="1">{
+                set[s] = struct{}{}
+        }</span>
+        <span class="cov8" title="1">return set</span>
+}
+
+// setDifference returns elements in setA that are not in setB (setA - setB)
+func setDifference(setA, setB map[string]struct{}) map[string]struct{} <span class="cov8" title="1">{
+        diff := make(map[string]struct{})
+        for item := range setA </span><span class="cov8" title="1">{
+                if _, exists := setB[item]; !exists </span><span class="cov8" title="1">{
+                        diff[item] = struct{}{}
+                }</span>
+        }
+        <span class="cov8" title="1">return diff</span>
+}
+
+// setIntersection returns elements that exist in both setA and setB
+func setIntersection(setA, setB map[string]struct{}) map[string]struct{} <span class="cov8" title="1">{
+        intersection := make(map[string]struct{})
+        for item := range setA </span><span class="cov8" title="1">{
+                if _, exists := setB[item]; exists </span><span class="cov8" title="1">{
+                        intersection[item] = struct{}{}
+                }</span>
+        }
+        <span class="cov8" title="1">return intersection</span>
+}
+
+// setToStringSlice converts a set back to a string slice for debugging
+func setToStringSlice(set map[string]struct{}) []string <span class="cov8" title="1">{
+        slice := make([]string, 0, len(set))
+        for item := range set </span><span class="cov8" title="1">{
+                slice = append(slice, item)
+        }</span>
+        <span class="cov8" title="1">return slice</span>
+}
+
+// convertStringsToAttrValues converts a string slice to attr.Value slice for set construction
+func convertStringsToAttrValues(strings []string) []attr.Value <span class="cov8" title="1">{
+        values := make([]attr.Value, len(strings))
+        for i, s := range strings </span><span class="cov8" title="1">{
+                values[i] = types.StringValue(s)
+        }</span>
+        <span class="cov8" title="1">return values</span>
+}
+
+// convertSetMapToValueMap converts map[string]types.Set to map[string]attr.Value
+func convertSetMapToValueMap(setMap map[string]types.Set) map[string]attr.Value <span class="cov8" title="1">{
+        valueMap := make(map[string]attr.Value)
+        for key, set := range setMap </span><span class="cov8" title="1">{
+                valueMap[key] = set
+        }</span>
+        <span class="cov8" title="1">return valueMap</span>
+}</pre>
+		
+		<pre class="file" id="file11" style="display: none">package provider
+
+import (
+        "context"
+        "fmt"
+        "reflect"
+        "sort"
+
+        "github.com/hashicorp/terraform-plugin-framework/attr"
+        "github.com/hashicorp/terraform-plugin-framework/diag"
+        "github.com/hashicorp/terraform-plugin-framework/types/basetypes"
+        "github.com/hashicorp/terraform-plugin-go/tftypes"
+)
+
+// UnorderedStringListType is a custom type that represents a list of strings where order doesn't matter
+type UnorderedStringListType struct {
+        basetypes.ListType
+}
+
+// UnorderedStringListValue is a custom value that implements semantic equality for unordered string lists
+type UnorderedStringListValue struct {
+        basetypes.ListValue
+}
+
+// NewUnorderedStringListType creates a new UnorderedStringListType
+func NewUnorderedStringListType() UnorderedStringListType <span class="cov8" title="1">{
+        return UnorderedStringListType{
+                ListType: basetypes.ListType{
+                        ElemType: basetypes.StringType{},
+                },
+        }
+}</span>
+
+// NewUnorderedStringListValue creates a new UnorderedStringListValue
+func NewUnorderedStringListValue(elements []attr.Value) (UnorderedStringListValue, diag.Diagnostics) <span class="cov8" title="1">{
+        listValue, diags := basetypes.NewListValue(basetypes.StringType{}, elements)
+        if diags.HasError() </span><span class="cov0" title="0">{
+                return UnorderedStringListValue{}, diags
+        }</span>
+        
+        <span class="cov8" title="1">return UnorderedStringListValue{
+                ListValue: listValue,
+        }, diags</span>
+}
+
+// NewUnorderedStringListValueFromStrings creates a new UnorderedStringListValue from a slice of strings
+func NewUnorderedStringListValueFromStrings(ctx context.Context, strings []string) (UnorderedStringListValue, diag.Diagnostics) <span class="cov8" title="1">{
+        var diags diag.Diagnostics
+        
+        if strings == nil </span><span class="cov8" title="1">{
+                return UnorderedStringListValue{
+                        ListValue: basetypes.NewListNull(basetypes.StringType{}),
+                }, diags
+        }</span>
+        
+        <span class="cov8" title="1">if len(strings) == 0 </span><span class="cov8" title="1">{
+                listValue, listDiags := basetypes.NewListValue(basetypes.StringType{}, []attr.Value{})
+                diags.Append(listDiags...)
+                return UnorderedStringListValue{
+                        ListValue: listValue,
+                }, diags
+        }</span>
+        
+        <span class="cov8" title="1">elements := make([]attr.Value, len(strings))
+        for i, s := range strings </span><span class="cov8" title="1">{
+                elements[i] = basetypes.NewStringValue(s)
+        }</span>
+        
+        <span class="cov8" title="1">listValue, listDiags := basetypes.NewListValue(basetypes.StringType{}, elements)
+        diags.Append(listDiags...)
+        
+        return UnorderedStringListValue{
+                ListValue: listValue,
+        }, diags</span>
+}
+
+// Type returns the type of the UnorderedStringListValue
+func (v UnorderedStringListValue) Type(ctx context.Context) attr.Type <span class="cov8" title="1">{
+        return NewUnorderedStringListType()
+}</span>
+
+// Equal returns true if the two UnorderedStringListValues are equal
+func (v UnorderedStringListValue) Equal(o attr.Value) bool <span class="cov8" title="1">{
+        other, ok := o.(UnorderedStringListValue)
+        if !ok </span><span class="cov8" title="1">{
+                return false
+        }</span>
+        
+        <span class="cov8" title="1">return v.ListValue.Equal(other.ListValue)</span>
+}
+
+// ListSemanticEquals implements semantic equality for unordered lists
+func (v UnorderedStringListValue) ListSemanticEquals(ctx context.Context, newValuable basetypes.ListValuable) (bool, diag.Diagnostics) <span class="cov8" title="1">{
+        var diags diag.Diagnostics
+        
+        // Check if the new value is also an UnorderedStringListValue
+        newValue, ok := newValuable.(UnorderedStringListValue)
+        if !ok </span><span class="cov0" title="0">{
+                return false, diags
+        }</span>
+        
+        // Handle null and unknown values
+        <span class="cov8" title="1">if v.IsNull() &amp;&amp; newValue.IsNull() </span><span class="cov0" title="0">{
+                return true, diags
+        }</span>
+        
+        <span class="cov8" title="1">if v.IsNull() || newValue.IsNull() </span><span class="cov8" title="1">{
+                return false, diags
+        }</span>
+        
+        <span class="cov8" title="1">if v.IsUnknown() &amp;&amp; newValue.IsUnknown() </span><span class="cov0" title="0">{
+                return true, diags
+        }</span>
+        
+        <span class="cov8" title="1">if v.IsUnknown() || newValue.IsUnknown() </span><span class="cov0" title="0">{
+                return false, diags
+        }</span>
+        
+        // Convert both lists to string slices
+        <span class="cov8" title="1">var priorValues, newValues []string
+        diags.Append(v.ElementsAs(ctx, &amp;priorValues, false)...)
+        diags.Append(newValue.ElementsAs(ctx, &amp;newValues, false)...)
+        
+        if diags.HasError() </span><span class="cov0" title="0">{
+                return false, diags
+        }</span>
+        
+        // Compare as sets (order-independent)
+        <span class="cov8" title="1">return areStringSlicesEqualAsSet(priorValues, newValues), diags</span>
+}
+
+// ValueFromTerraform converts a Terraform value to an UnorderedStringListValue
+func (t UnorderedStringListType) ValueFromTerraform(ctx context.Context, in tftypes.Value) (attr.Value, error) <span class="cov8" title="1">{
+        listValue, err := t.ListType.ValueFromTerraform(ctx, in)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        
+        <span class="cov8" title="1">listVal, ok := listValue.(basetypes.ListValue)
+        if !ok </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("unexpected value type %T", listValue)
+        }</span>
+        
+        <span class="cov8" title="1">return UnorderedStringListValue{
+                ListValue: listVal,
+        }, nil</span>
+}
+
+// ValueType returns the type of values this type can hold
+func (t UnorderedStringListType) ValueType(ctx context.Context) attr.Value <span class="cov8" title="1">{
+        return UnorderedStringListValue{}
+}</span>
+
+// String returns a string representation of the type
+func (t UnorderedStringListType) String() string <span class="cov8" title="1">{
+        return "UnorderedStringListType"
+}</span>
+
+// areStringSlicesEqualAsSet compares two string slices as sets (order-independent)
+func areStringSlicesEqualAsSet(a, b []string) bool <span class="cov8" title="1">{
+        if len(a) != len(b) </span><span class="cov8" title="1">{
+                return false
+        }</span>
+        
+        // Create sorted copies to compare
+        <span class="cov8" title="1">aCopy := make([]string, len(a))
+        bCopy := make([]string, len(b))
+        copy(aCopy, a)
+        copy(bCopy, b)
+        
+        sort.Strings(aCopy)
+        sort.Strings(bCopy)
+        
+        return reflect.DeepEqual(aCopy, bCopy)</span>
+}</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>

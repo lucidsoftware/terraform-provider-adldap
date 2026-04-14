@@ -8,10 +8,11 @@ import (
 	"github.com/go-ldap/ldif"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/thoas/go-funk"
+	"strings"
 )
 
 // GetEntry returns a specific entry and is a shortcut around the search function.
-func GetEntry(conn *ldap.Conn, dn string, attrs ...string) (ldap.Entry, error) {
+func GetEntry(conn ldapClient, dn string, attrs ...string) (ldap.Entry, error) {
 	s := ldap.NewSearchRequest(dn, ldap.ScopeBaseObject, 0, 0, 0, false, "(&)", attrs, []ldap.Control{})
 
 	if result, err := conn.Search(s); err != nil {
@@ -37,13 +38,17 @@ func ToLDIF(entry interface{}) string {
 // MaskAttributes searches attributes of an LDAP entry for sensitive data and masks the values.
 func MaskAttributes(ctx context.Context, attributes map[string][]string) context.Context {
 	for attributeType, values := range attributes {
-		if attributeType == "userPassword" {
+		if isSensitiveAttribute(attributeType) {
 			funk.ForEach(values, func(value string) {
 				ctx = tflog.MaskLogStrings(ctx, value)
 			})
 		}
 	}
 	return ctx
+}
+
+func isSensitiveAttribute(name string) bool {
+	return strings.EqualFold(name, "userPassword") || strings.EqualFold(name, "unicodePwd")
 }
 
 // MaskAttributesFromArray is a MaskAttributes adapter for ldap.EntryAttribute-Arrays.
@@ -72,8 +77,7 @@ func isBinaryAttribute(name string) bool {
 func isSystemAttribute(name string) bool {
 	return name == "objectGUID" || 
 		   name == "objectSid" ||
-		   // Temporarily allow distinguishedName for DN resolution
-		   // name == "distinguishedName" ||
+		   name == "distinguishedName" ||
 		   name == "dSCorePropagationData" ||
 		   name == "instanceType" ||
 		   name == "whenCreated" ||

@@ -3,9 +3,12 @@ package main
 import (
 	"context"
 	"flag"
+	"io"
 	"log"
+	"os"
 
 	"github.com/lucidsoftware/terraform-provider-adldap/internal/provider"
+	frameworkprovider "github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 )
 
@@ -17,7 +20,7 @@ import (
 
 // Run the docs generation tool, check its repository for more information on how it works and how docs
 // can be customized.
-//go:generate go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs generate --provider-name=ldap --rendered-provider-name="LDAP"
+//go:generate go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs generate --provider-name=ldap --rendered-provider-name=LDAP
 
 var (
 	// these will be set by the goreleaser configuration
@@ -28,20 +31,29 @@ var (
 	// https://goreleaser.com/cookbooks/using-main.version/
 )
 
-func main() {
+var serveProvider = providerserver.Serve
+var fatalLog = log.Fatal
+
+func run(args []string, serve func(context.Context, func() frameworkprovider.Provider, providerserver.ServeOpts) error) error {
 	var debug bool
 
-	flag.BoolVar(&debug, "debug", false, "set to true to run the provider with support for debuggers like delve")
-	flag.Parse()
+	flagSet := flag.NewFlagSet("terraform-provider-adldap", flag.ContinueOnError)
+	flagSet.SetOutput(io.Discard)
+	flagSet.BoolVar(&debug, "debug", false, "set to true to run the provider with support for debuggers like delve")
+	if err := flagSet.Parse(args); err != nil {
+		return err
+	}
 
 	opts := providerserver.ServeOpts{
 		Address: "registry.terraform.io/lucidsoftware/adldap",
 		Debug:   debug,
 	}
 
-	err := providerserver.Serve(context.Background(), provider.New(version), opts)
+	return serve(context.Background(), provider.New(version), opts)
+}
 
-	if err != nil {
-		log.Fatal(err.Error())
+func main() {
+	if err := run(os.Args[1:], serveProvider); err != nil {
+		fatalLog("provider exited with error")
 	}
 }

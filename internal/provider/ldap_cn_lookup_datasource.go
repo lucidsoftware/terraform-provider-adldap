@@ -117,7 +117,7 @@ func (L *LDAPCNLookupDataSource) Read(ctx context.Context, request datasource.Re
 	// Perform cached lookup
 	dn, found := L.providerData.cachedUserLookup(ctx, rawKey, func() (string, bool) {
 		// Search for user by CN
-		filter := fmt.Sprintf("(&(objectCategory=Person)(cn=%s))", commonName)
+		filter := fmt.Sprintf("(&(objectCategory=Person)(cn=%s))", ldap.EscapeFilter(commonName))
 		
 		// Try primary base DN first
 		if dn := L.searchForUser(ctx, baseDN, filter); dn != "" {

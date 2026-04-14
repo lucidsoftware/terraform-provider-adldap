@@ -123,7 +123,10 @@ func (L *LDAPSearchDataSource) Read(ctx context.Context, request datasource.Read
 		filter = data.Filter.ValueString()
 	}
 
-	response.State.SetAttribute(ctx, path.Root("id"), fmt.Sprintf("%s/%s/%s", data.BaseDN.ValueString(), data.Scope.ValueString(), filter))
+	response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("id"), fmt.Sprintf("%s/%s/%s", data.BaseDN.ValueString(), data.Scope.ValueString(), filter))...)
+	if response.Diagnostics.HasError() {
+		return
+	}
 
 	tflog.Debug(ctx, "Searching for ldap entries", map[string]interface{}{
 		"baseDN":               data.BaseDN.ValueString(),

@@ -129,6 +129,29 @@ The provider automatically excludes certain system-managed attributes from LDAP 
 
 These attributes can be read using the `ldap_object` data source if needed.
 
+## Recent Hardening
+
+Recent maintenance work was intentionally limited to security fixes, dependency remediation, and testability improvements:
+
+- provider configuration now rejects insecure `ldap://` binds unless `ldap_tls_use_starttls = true`
+- `ldap_bind_password` is marked sensitive and no longer emitted in provider debug logs
+- CN and sAMAccountName lookup datasources now escape user-controlled LDAP filter values
+- `distinguishedName` is treated as a system-managed attribute again and is excluded from LDAP write operations
+- CI now runs `go test`, coverage, `go vet`, `staticcheck`, `gosec`, and `govulncheck`
+- vulnerable transitive dependencies identified by `govulncheck` were updated to patched versions
+- CI now pins a patched Go 1.25 toolchain level so `govulncheck` does not scan known-vulnerable Go 1.25.0 standard library packages
+- release tags now rerun verification and acceptance tests before GoReleaser publishes signed artifacts
+
+## Testing Notes
+
+Unit and integration-style `_test.go` files remain colocated with the package they exercise. This is intentional:
+
+- Go package tests need direct access to unexported provider internals
+- package-local tests produce more accurate coverage for `internal/provider`
+- moving those tests into a separate directory would add indirection without improving maintainability here
+
+Acceptance tests still require `TF_ACC=1` and a running LDAP fixture.
+
 ## Developing the Provider
 
 If you wish to work on the provider, you'll first need [Go](http://www.golang.org) installed on your machine (see [Requirements](#requirements) above).
@@ -137,11 +160,24 @@ To compile the provider, run `go install`. This will build the provider and put 
 
 To generate or update documentation, run `go generate`.
 
+To run the local verification suite used in CI:
+
+```bash
+go test ./... -coverpkg=./... -coverprofile=coverage.out
+go tool cover -func=coverage.out
+PATH="$(go env GOPATH)/bin:$PATH" govulncheck ./...
+PATH="$(go env GOPATH)/bin:$PATH" gosec ./...
+PATH="$(go env GOPATH)/bin:$PATH" staticcheck ./...
+go vet ./...
+```
+
+Tagged releases rerun the same verification suite plus acceptance tests before publication.
+
 In order to run the full suite of Acceptance tests, first make sure to have a running LDAP server. We've included a 
 docker-compose file to quickly start a matching test server.
 
     cd contrib/test-ldap-server
-    docker-compose up -d
+    docker compose up -d
 
 Then you can set the following environment variables:
 
@@ -150,7 +186,7 @@ Then you can set the following environment variables:
 - LDAP_BIND_PASSWORD: The bind password to access the LDAP server
 - LDAP_TLS_URL: The TLS enabled URL to access the LDAP server
 
-The URL variables are used to test the non-tls, TLS and STARTTLS features of the provider.
+The URL variables are used to test the TLS and STARTTLS features of the provider. Plain `ldap://` is intentionally rejected by provider configuration unless `LDAP_TLS_USE_STARTTLS=true`.
 
 If you use the provided test server, the variables are already set for you.
 

@@ -108,7 +108,7 @@ func (L *LDAPSAMLookupDataSource) Read(ctx context.Context, request datasource.R
 		})
 		
 		// Search for user by sAMAccountName
-		filter := fmt.Sprintf("(&(objectCategory=Person)(sAMAccountName=%s))", samAccountName)
+		filter := fmt.Sprintf("(&(objectCategory=Person)(sAMAccountName=%s))", ldap.EscapeFilter(samAccountName))
 		
 		// Try active users first
 		if L.providerData.UsersOU != "" {

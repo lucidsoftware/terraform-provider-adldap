@@ -138,18 +138,18 @@ func (L *LDAPObjectResource) Read(ctx context.Context, request resource.ReadRequ
 			err.Error(),
 		)
 	} else {
-		response.State.SetAttribute(ctx, path.Root("dn"), entry.DN)
+		response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("dn"), entry.DN)...)
 		ctx = MaskAttributesFromArray(ctx, entry.Attributes)
 		for _, attribute := range entry.Attributes {
 			if attribute.Name == "objectClass" {
-				response.State.SetAttribute(ctx, path.Root("object_classes"), attribute.Values)
+				response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("object_classes"), attribute.Values)...)
 			} else if !L.isIgnored(ctx, attribute.Name, data, response.Diagnostics) && !isSystemAttribute(attribute.Name) {
 				encodedValues := encodeAttributeValues(attribute.Name, attribute.Values)
 				// Convert string slice to set for new schema
 				setValue, diags := types.SetValueFrom(ctx, types.StringType, encodedValues)
 				response.Diagnostics.Append(diags...)
 				if !response.Diagnostics.HasError() {
-					response.State.SetAttribute(ctx, path.Root("attributes").AtMapKey(attribute.Name), setValue)
+					response.Diagnostics.Append(response.State.SetAttribute(ctx, path.Root("attributes").AtMapKey(attribute.Name), setValue)...)
 				}
 			}
 		}
@@ -211,10 +211,11 @@ func (L *LDAPObjectResource) Update(ctx context.Context, request resource.Update
 		response.Diagnostics.Append(stateData.Attributes.ElementsAs(ctx, &stateAttributes, false)...)
 		var planAttributes map[string][]string
 		response.Diagnostics.Append(planData.Attributes.ElementsAs(ctx, &planAttributes, false)...)
+		ctx = MaskAttributes(ctx, stateAttributes)
+		ctx = MaskAttributes(ctx, planAttributes)
 
 		// No member attribute processing - handled at module level via data sources
 
-		ctx = MaskAttributes(ctx, stateAttributes)
 		for attributeType, stateValues := range stateAttributes {
 			if L.isIgnored(ctx, attributeType, stateData, response.Diagnostics) || isSystemAttribute(attributeType) || isTerraformOnlyAttribute(attributeType) {
 				continue
@@ -236,10 +237,7 @@ func (L *LDAPObjectResource) Update(ctx context.Context, request resource.Update
 					}
 				}
 				if valuesChanged {
-					tflog.Debug(ctx, "Changing attribute", map[string]interface{}{
-						"type":   attributeType,
-						"values": planValues,
-					})
+					tflog.Debug(ctx, "Changing attribute", map[string]interface{}{"type": attributeType})
 					// Use decoded values for LDAP operations
 					decodedValues := decodeAttributeValues(attributeType, encodedPlanValues)
 					r.Replace(attributeType, decodedValues)
@@ -265,27 +263,8 @@ func (L *LDAPObjectResource) Update(ctx context.Context, request resource.Update
 			}
 		}
 		
-		// DIAGNOSTIC: Log exactly what modifications are being attempted
-		tflog.Warn(ctx, "DIAGNOSTIC: About to send LDAP ModifyRequest", map[string]interface{}{
-			"dn": planData.DN.ValueString(),
-			"modify_request_details": fmt.Sprintf("%+v", r),
-		})
-		
-		// DIAGNOSTIC: Extract and log individual modify operations 
-		var modifyOps []map[string]interface{}
-		for _, change := range r.Changes {
-			modifyOps = append(modifyOps, map[string]interface{}{
-				"operation": change.Operation,
-				"attribute": change.Modification.Type,
-				"values": change.Modification.Vals,
-			})
-		}
-		tflog.Warn(ctx, "DIAGNOSTIC: ModifyRequest operations breakdown", map[string]interface{}{
-			"dn": planData.DN.ValueString(),
-			"operations": modifyOps,
-		})
-		
-		// DEFENSIVE: Final safety check - remove any system attributes from modify request
+		// Final safety check: never send system-managed attributes back to LDAP.
+		originalChangeCount := len(r.Changes)
 		var filteredChanges []ldap.Change
 		for _, change := range r.Changes {
 			if isSystemAttribute(change.Modification.Type) {
@@ -293,7 +272,6 @@ func (L *LDAPObjectResource) Update(ctx context.Context, request resource.Update
 					"dn": planData.DN.ValueString(),
 					"system_attribute": change.Modification.Type,
 					"operation": change.Operation,
-					"values": change.Modification.Vals,
 				})
 				// Skip this change to prevent LDAP error
 			} else {
@@ -302,11 +280,10 @@ func (L *LDAPObjectResource) Update(ctx context.Context, request resource.Update
 		}
 		r.Changes = filteredChanges
 		
-		// DIAGNOSTIC: Log final filtered request
-		if len(filteredChanges) != len(modifyOps) {
-			tflog.Warn(ctx, "DIAGNOSTIC: Filtered out system attributes from ModifyRequest", map[string]interface{}{
+		if len(filteredChanges) != originalChangeCount {
+			tflog.Warn(ctx, "Filtered system attributes from LDAP modify request", map[string]interface{}{
 				"dn": planData.DN.ValueString(),
-				"original_operations": len(modifyOps),
+				"original_operations": originalChangeCount,
 				"filtered_operations": len(filteredChanges),
 			})
 		}
@@ -321,7 +298,7 @@ func (L *LDAPObjectResource) Update(ctx context.Context, request resource.Update
 			if err := L.providerData.Conn.Modify(r); err != nil {
 				response.Diagnostics.AddError(
 					"Can not modify entry",
-					fmt.Sprintf("LDAP server reported: %s\nDN: %s\nOperations attempted: %+v", err, planData.DN.ValueString(), modifyOps),
+					fmt.Sprintf("LDAP server reported: %s", err),
 				)
 				return
 			}
@@ -418,7 +395,7 @@ func (L *LDAPObjectResource) ModifyPlan(ctx context.Context, request resource.Mo
 				for attributeType := range planAttributes {
 					if L.isIgnored(ctx, attributeType, planData, response.Diagnostics) || isSystemAttribute(attributeType) {
 						if stateValue, exists := stateAttributes[attributeType]; exists {
-							response.Plan.SetAttribute(ctx, path.Root("attributes").AtMapKey(attributeType), stateValue)
+							response.Diagnostics.Append(response.Plan.SetAttribute(ctx, path.Root("attributes").AtMapKey(attributeType), stateValue)...)
 						}
 					}
 				}
@@ -427,7 +404,7 @@ func (L *LDAPObjectResource) ModifyPlan(ctx context.Context, request resource.Mo
 			for attributeType := range stateAttributes {
 				if L.isIgnored(ctx, attributeType, planData, response.Diagnostics) || isSystemAttribute(attributeType) {
 					// Re-add attributes to the plan that were ignored and removed to not manage them
-					response.Plan.SetAttribute(ctx, path.Root("attributes").AtMapKey(attributeType), stateAttributes[attributeType])
+					response.Diagnostics.Append(response.Plan.SetAttribute(ctx, path.Root("attributes").AtMapKey(attributeType), stateAttributes[attributeType])...)
 				}
 			}
 		}

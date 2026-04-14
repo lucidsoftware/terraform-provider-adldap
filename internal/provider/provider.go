@@ -13,9 +13,12 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"log"
+	"net"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
+	"time"
 )
 
 // UserLookupCacheEntry represents a cached user lookup result
@@ -26,7 +29,7 @@ type UserLookupCacheEntry struct {
 
 // LDAPProviderData contains the LDAP connection and configuration
 type LDAPProviderData struct {
-	Conn            *ldap.Conn
+	Conn            ldapClient
 	UsersOU         string
 	DisabledUsersOU string
 	// User lookup cache to prevent redundant LDAP queries within a single Terraform run
@@ -82,6 +85,7 @@ All provider options can be set by the respective environment variables as well.
 			"ldap_bind_password": schema.StringAttribute{
 				MarkdownDescription: "Bind password (`LDAP_BIND_PASSWORD`)",
 				Optional:            true,
+				Sensitive:           true,
 			},
 			"ldap_tls_insecure_verify": schema.BoolAttribute{
 				MarkdownDescription: "Whether to skip certificate verification (`LDAP_TLS_INSECURE_VERIFY`)",
@@ -181,33 +185,77 @@ func (p *LDAPProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 
 	ctx = tflog.MaskLogStrings(ctx, ldapBindPassword)
 
+	parsedLDAPURL, err := url.Parse(ldapUrl)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Invalid LDAP URL",
+			fmt.Sprintf("Could not parse LDAP URL %q: %s", ldapUrl, err),
+		)
+		return
+	}
+
+	switch parsedLDAPURL.Scheme {
+	case "ldaps":
+		if ldapTLSUseStartTLS {
+			resp.Diagnostics.AddError(
+				"Invalid LDAP TLS configuration",
+				"ldap_tls_use_starttls cannot be enabled when ldap_url already uses the ldaps:// scheme",
+			)
+			return
+		}
+	case "ldap":
+		if !ldapTLSUseStartTLS {
+			resp.Diagnostics.AddError(
+				"Insecure LDAP configuration",
+				"Refusing to bind over ldap:// without STARTTLS. Use ldaps:// or set ldap_tls_use_starttls = true.",
+			)
+			return
+		}
+	default:
+		resp.Diagnostics.AddError(
+			"Unsupported LDAP URL scheme",
+			fmt.Sprintf("LDAP URL %q must use ldap:// or ldaps://", ldapUrl),
+		)
+		return
+	}
+
 	loggerAdapter := TFLoggerAdapter{ctx: ctx}
 	logger := log.New(loggerAdapter, "", log.LstdFlags)
 	ldap.Logger(logger)
 
-	var o []ldap.DialOpt
+	tlsConfig := &tls.Config{
+		MinVersion:         tls.VersionTLS12,
+		InsecureSkipVerify: ldapTLSInsecureVerify,
+	}
+	if host := parsedLDAPURL.Hostname(); host != "" {
+		tlsConfig.ServerName = host
+	}
+
+	o := []ldap.DialOpt{
+		ldap.DialWithDialer(&net.Dialer{Timeout: 10 * time.Second}),
+	}
 
 	if ldapTLSInsecureVerify {
 		tflog.Debug(ctx, "Connecting insecurely to the LDAP server")
-		o = append(o, ldap.DialWithTLSConfig(&tls.Config{InsecureSkipVerify: true}))
+	}
+
+	if parsedLDAPURL.Scheme == "ldaps" {
+		o = append(o, ldap.DialWithTLSConfig(tlsConfig))
 	}
 
 	tflog.Debug(ctx, "Connecting to LDAP server", map[string]interface{}{"url": ldapUrl})
-	if conn, err := ldap.DialURL(ldapUrl, o...); err != nil {
+	if conn, err := ldapDialURL(ldapUrl, o...); err != nil {
 		resp.Diagnostics.AddError(
 			"Can't connect to LDAP server",
 			fmt.Sprintf("Error connecting to LDAP server: %s", err),
 		)
 		return
 	} else {
-		conn.Debug = true
+		conn.SetDebug(os.Getenv("TF_LOG") == "DEBUG")
 		if ldapTLSUseStartTLS {
 			tflog.Debug(ctx, "Connecting using StartTLS")
-			c := tls.Config{}
-			if ldapTLSInsecureVerify {
-				c.InsecureSkipVerify = true
-			}
-			if err := conn.StartTLS(&c); err != nil {
+			if err := conn.StartTLS(tlsConfig); err != nil {
+				_ = conn.Close()
 				resp.Diagnostics.AddError(
 					"Can't start TLS",
 					fmt.Sprintf("Error starting TLS: %s", err),
@@ -215,8 +263,9 @@ func (p *LDAPProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 				return
 			}
 		}
-		tflog.Debug(ctx, "Binding to LDAP server", map[string]interface{}{"bindDN": ldapBindDN, "password": ldapBindPassword})
+		tflog.Debug(ctx, "Binding to LDAP server", map[string]interface{}{"bindDN": ldapBindDN})
 		if err := conn.Bind(ldapBindDN, ldapBindPassword); err != nil {
+			_ = conn.Close()
 			resp.Diagnostics.AddError(
 				"Can't bind to LDAP server",
 				fmt.Sprintf("Error binding to LDAP server: %s", err),

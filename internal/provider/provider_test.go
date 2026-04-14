@@ -18,6 +18,9 @@ var testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServe
 }
 
 func testAccPreCheck(t *testing.T) {
+	if os.Getenv("TF_ACC") == "" {
+		t.Skip("acceptance tests require TF_ACC=1")
+	}
 	assert.NotEmpty(t, os.Getenv("LDAP_URL"), "Please set LDAP_URL variable")
 	assert.NotEmpty(t, os.Getenv("LDAP_BIND_DN"), "Please set LDAP_BIND_DN variable")
 	assert.NotEmpty(t, os.Getenv("LDAP_BIND_PASSWORD"), "Please set LDAP_BIND_PASSWORD variable")

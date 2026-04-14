@@ -17,31 +17,55 @@ permissions:
 
 jobs:
   # Ensure project builds before running testing matrix
-  build:
-    name: Build
+  verify:
+    name: Build, Test, and Scan
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@c85c95e3d7251135ab7dc9ce3241c5835cc595a9 # v3.5.3
-      - uses: actions/setup-go@fac708d6674e30b6ba41289acaab6d4b75aa0753 # v4.0.1
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version-file: 'go.mod'
           cache: true
       - run: go mod download
       - run: go build -v .
-      - name: Run linters
-        uses: golangci/golangci-lint-action@639cd343e1d3b897ff35927a75193d57cfcba299 # v3.6.0
+      - name: Build Linux amd64 plugin zip
+        run: |
+          set -eu
+          mkdir -p dist
+          version="ci-${GITHUB_SHA::7}"
+          binary="terraform-provider-adldap_v${version}"
+          GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.version=${version} -X main.commit=${GITHUB_SHA}" -o "dist/${binary}" .
+          (cd dist && zip "${binary}_linux_amd64.zip" "${binary}")
+      - name: Upload Linux amd64 plugin zip
+        uses: actions/upload-artifact@v4
         with:
-          version: latest
+          name: terraform-provider-adldap-linux-amd64-zip
+          path: dist/*_linux_amd64.zip
+          if-no-files-found: error
+          retention-days: 14
+      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+      - run: go install honnef.co/go/tools/cmd/staticcheck@latest
+      - run: go test ./... -coverpkg=./... -coverprofile=coverage.out
+      - run: go tool cover -func=coverage.out
+      - run: go vet ./...
+      - run: staticcheck ./...
+      - run: gosec ./...
+      - run: govulncheck ./...
 
   generate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@c85c95e3d7251135ab7dc9ce3241c5835cc595a9 # v3.5.3
-      - uses: actions/setup-go@fac708d6674e30b6ba41289acaab6d4b75aa0753 # v4.0.1
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version-file: 'go.mod'
           cache: true
+      - uses: hashicorp/setup-terraform@v3.1.2
+        with:
+          terraform_version: '1.14.*'
+          terraform_wrapper: false
       - run: go generate ./...
       - name: git diff
         run: |
@@ -49,38 +73,55 @@ jobs:
             (echo; echo "Unexpected difference in directories after code generation. Run 'go generate ./...' command and commit."; exit 1)
 
   # Run acceptance tests in a matrix with Terraform CLI versions
-  test:
+  acceptance:
     name: Terraform Provider Acceptance Tests
-    needs: build
+    needs: verify
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
-      LDAP_URL: ldap://localhost:1389
+      LDAP_URL: ldaps://localhost:1636
       LDAP_BIND_DN: cn=admin,dc=example,dc=com
       LDAP_BIND_PASSWORD: admin
+      LDAP_TLS_INSECURE_VERIFY: "true"
     strategy:
       fail-fast: false
       matrix:
-        # list whatever Terraform versions here you would like to support
         terraform:
-          - '1.1.*'
-          - '1.2.*'
-          - '1.3.*'
+          - '1.10.*'
+          - '1.11.*'
+          - '1.12.*'
+          - '1.13.*'
+          - '1.14.*'
     steps:
-      - uses: actions/checkout@c85c95e3d7251135ab7dc9ce3241c5835cc595a9 # v3.5.3
-      - uses: isbang/compose-action@v1.4.1
-        with:
-          compose-file: "./contrib/test-ldap-server/docker-compose.yaml"
-      - uses: actions/setup-go@fac708d6674e30b6ba41289acaab6d4b75aa0753 # v4.0.1
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version-file: 'go.mod'
           cache: true
-      - uses: hashicorp/setup-terraform@633666f66e0061ca3b725c73b2ec20cd13a8fdd1 # v2.0.3
+      - uses: hashicorp/setup-terraform@v3.1.2
         with:
           terraform_version: ${{ matrix.terraform }}
           terraform_wrapper: false
+      - run: docker compose -f ./contrib/test-ldap-server/docker-compose.yaml up -d
+      - name: Wait For LDAP
+        run: |
+          set -eu
+          container_id="$(docker compose -f ./contrib/test-ldap-server/docker-compose.yaml ps -q openldap)"
+          for _ in $(seq 1 30); do
+            status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}starting{{end}}' "$container_id")"
+            if [ "$status" = "healthy" ]; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose -f ./contrib/test-ldap-server/docker-compose.yaml logs openldap
+          exit 1
       - run: go mod download
       - env:
           TF_ACC: "1"
         run: go test -v -cover ./internal/provider/
         timeout-minutes: 10
+      - if: failure()
+        run: docker compose -f ./contrib/test-ldap-server/docker-compose.yaml logs
+      - if: always()
+        run: docker compose -f ./contrib/test-ldap-server/docker-compose.yaml down -v

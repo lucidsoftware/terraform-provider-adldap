@@ -70,17 +70,16 @@ func isBinaryAttribute(name string) bool {
 
 // isSystemAttribute checks if an attribute should be excluded from modifications
 func isSystemAttribute(name string) bool {
-	return name == "objectGUID" || 
-		   name == "objectSid" ||
-		   // Temporarily allow distinguishedName for DN resolution
-		   // name == "distinguishedName" ||
-		   name == "dSCorePropagationData" ||
-		   name == "instanceType" ||
-		   name == "whenCreated" ||
-		   name == "whenChanged" ||
-		   name == "uSNCreated" ||
-		   name == "uSNChanged" ||
-		   name == "memberOf"
+	return name == "objectGUID" ||
+		name == "objectSid" ||
+		name == "distinguishedName" ||
+		name == "dSCorePropagationData" ||
+		name == "instanceType" ||
+		name == "whenCreated" ||
+		name == "whenChanged" ||
+		name == "uSNCreated" ||
+		name == "uSNChanged" ||
+		name == "memberOf"
 }
 
 // isTerraformOnlyAttribute returns true if the attribute is a Terraform-only attribute
@@ -94,7 +93,7 @@ func encodeAttributeValues(attributeName string, values []string) []string {
 	if !isBinaryAttribute(attributeName) {
 		return values
 	}
-	
+
 	encodedValues := make([]string, len(values))
 	for i, value := range values {
 		encodedValues[i] = base64.StdEncoding.EncodeToString([]byte(value))
@@ -107,7 +106,7 @@ func decodeAttributeValues(attributeName string, values []string) []string {
 	if !isBinaryAttribute(attributeName) {
 		return values
 	}
-	
+
 	decodedValues := make([]string, len(values))
 	for i, value := range values {
 		if decoded, err := base64.StdEncoding.DecodeString(value); err == nil {

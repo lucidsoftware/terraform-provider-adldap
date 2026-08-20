@@ -79,6 +79,26 @@ resource "ldap_object" "ai_users_group" {
 
 **Important**: Active Directory treats `memberOf` as read-only. Manage group relationships using direct `member` attributes in parent groups:
 
+When nesting an existing group, resolve it through `ldap_group_cn_lookup` with
+`require_found = true`. This makes a missing group a planning error instead of
+an LDAP `No Such Object` failure during apply. Group lookups are cached for the
+duration of the Terraform run and fail when the CN matches more than one group.
+
+```terraform
+data "ldap_group_cn_lookup" "access_cssdlc_users" {
+  common_name   = "Access_cssdlc_users"
+  base_dn       = "OU=groups,DC=example,DC=com"
+  require_found = true
+}
+
+resource "ldap_object" "github_enterprise_cssdlc_users" {
+  # ...
+  attributes = {
+    member = [data.ldap_group_cn_lookup.access_cssdlc_users.dn]
+  }
+}
+```
+
 ```terraform
 # ✅ CORRECT: Manage from parent group
 resource "ldap_object" "administrators" {

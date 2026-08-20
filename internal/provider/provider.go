@@ -18,10 +18,10 @@ import (
 	"sync"
 )
 
-// UserLookupCacheEntry represents a cached user lookup result
-type UserLookupCacheEntry struct {
+// LookupCacheEntry represents a cached LDAP lookup result.
+type LookupCacheEntry struct {
 	DN    string // Distinguished name if found, empty if not found
-	Found bool   // Whether the user was found
+	Found bool   // Whether the entry was found
 }
 
 // LDAPProviderData contains the LDAP connection and configuration
@@ -29,9 +29,10 @@ type LDAPProviderData struct {
 	Conn            *ldap.Conn
 	UsersOU         string
 	DisabledUsersOU string
-	// User lookup cache to prevent redundant LDAP queries within a single Terraform run
-	userLookupCache map[string]UserLookupCacheEntry
-	cacheMutex      sync.RWMutex
+	// lookupCache prevents redundant LDAP queries within a single Terraform run.
+	// Lookup keys must include their type and search bases.
+	lookupCache map[string]LookupCacheEntry
+	cacheMutex  sync.RWMutex
 }
 
 // Ensure LDAPProvider satisfies various provider interfaces.
@@ -233,7 +234,7 @@ func (p *LDAPProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 			Conn:            conn,
 			UsersOU:         ldapUsersOU,
 			DisabledUsersOU: ldapDisabledUsersOU,
-			userLookupCache: make(map[string]UserLookupCacheEntry),
+			lookupCache:     make(map[string]LookupCacheEntry),
 		}
 
 		resp.DataSourceData = providerData
@@ -253,6 +254,7 @@ func (p *LDAPProvider) DataSources(_ context.Context) []func() datasource.DataSo
 		NewLDAPSearchDataSource,
 		NewLDAPSAMLookupDataSource,
 		NewLDAPCNLookupDataSource,
+		NewLDAPGroupCNLookupDataSource,
 	}
 }
 
@@ -263,47 +265,60 @@ func generateCacheKey(rawKey string) string {
 	return fmt.Sprintf("%x", hasher.Sum(nil))
 }
 
-// cachedUserLookup performs a user lookup with caching support
+// cachedUserLookup preserves the existing user-lookup API while delegating to
+// the common cache implementation.
 func (p *LDAPProviderData) cachedUserLookup(ctx context.Context, rawKey string, lookupFunc func() (string, bool)) (string, bool) {
-	// Generate checksummed cache key
+	dn, found, _ := p.cachedLookup(ctx, "User", rawKey, func() (string, bool, error) {
+		dn, found := lookupFunc()
+		return dn, found, nil
+	})
+	return dn, found
+}
+
+// cachedLookup performs an LDAP lookup with caching support. Errors are never
+// cached so a transient LDAP failure cannot become a run-wide negative result.
+func (p *LDAPProviderData) cachedLookup(ctx context.Context, lookupType, rawKey string, lookupFunc func() (string, bool, error)) (string, bool, error) {
 	cacheKey := generateCacheKey(rawKey)
-	
-	// Check cache first (read lock)
+
 	p.cacheMutex.RLock()
-	if entry, exists := p.userLookupCache[cacheKey]; exists {
+	if entry, exists := p.lookupCache[cacheKey]; exists {
 		p.cacheMutex.RUnlock()
-		tflog.Debug(ctx, "User lookup cache hit", map[string]interface{}{
+		tflog.Debug(ctx, "LDAP lookup cache hit", map[string]interface{}{
+			"lookup_type":    lookupType,
 			"cache_key_raw":  rawKey,
 			"cache_key_hash": cacheKey,
-			"found":         entry.Found,
+			"found":          entry.Found,
 		})
-		return entry.DN, entry.Found
+		return entry.DN, entry.Found, nil
 	}
 	p.cacheMutex.RUnlock()
-	
-	// Cache miss - perform LDAP lookup
-	tflog.Debug(ctx, "User lookup cache miss - performing LDAP query", map[string]interface{}{
+
+	tflog.Debug(ctx, "LDAP lookup cache miss - performing LDAP query", map[string]interface{}{
+		"lookup_type":    lookupType,
 		"cache_key_raw":  rawKey,
 		"cache_key_hash": cacheKey,
 	})
-	
-	dn, found := lookupFunc()
-	
-	// Store result in cache (write lock)
+
+	dn, found, err := lookupFunc()
+	if err != nil {
+		return "", false, err
+	}
+
 	p.cacheMutex.Lock()
-	p.userLookupCache[cacheKey] = UserLookupCacheEntry{
+	p.lookupCache[cacheKey] = LookupCacheEntry{
 		DN:    dn,
 		Found: found,
 	}
 	p.cacheMutex.Unlock()
-	
-	tflog.Debug(ctx, "User lookup result cached", map[string]interface{}{
+
+	tflog.Debug(ctx, "LDAP lookup result cached", map[string]interface{}{
+		"lookup_type":    lookupType,
 		"cache_key_raw":  rawKey,
 		"cache_key_hash": cacheKey,
-		"found":         found,
+		"found":          found,
 	})
-	
-	return dn, found
+
+	return dn, found, nil
 }
 
 func New(version string) func() provider.Provider {

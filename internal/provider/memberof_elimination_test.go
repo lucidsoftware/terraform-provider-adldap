@@ -38,7 +38,7 @@ func TestUnorderedAttributeExclusion(t *testing.T) {
 	if isUnorderedAttribute("memberOf") {
 		t.Error("memberOf should not be in unordered attributes list")
 	}
-	
+
 	// Verify other expected unordered attributes are still present
 	expectedUnordered := []string{"member", "objectClass", "uniqueMember", "roleOccupant", "owner"}
 	for _, attr := range expectedUnordered {
@@ -46,7 +46,7 @@ func TestUnorderedAttributeExclusion(t *testing.T) {
 			t.Errorf("Expected unordered attribute %s should still be present", attr)
 		}
 	}
-	
+
 	// Double-check that memberOf is not in the unorderedAttributes slice
 	for _, attr := range unorderedAttributes {
 		if attr == "memberOf" {
@@ -68,11 +68,11 @@ func TestLDAPSearchFiltersSystemAttributes(t *testing.T) {
 			{Name: "distinguishedName", Values: []string{"CN=testuser,OU=users,DC=example,DC=com"}},
 		},
 	}
-	
+
 	// Test that system attributes are properly filtered
 	ctx := context.Background()
 	ctx = MaskAttributesFromArray(ctx, mockEntry.Attributes)
-	
+
 	// Simulate what the datasource does - filter system attributes
 	var processedAttrs []string
 	for _, attribute := range mockEntry.Attributes {
@@ -80,7 +80,7 @@ func TestLDAPSearchFiltersSystemAttributes(t *testing.T) {
 			processedAttrs = append(processedAttrs, attribute.Name)
 		}
 	}
-	
+
 	// Verify memberOf and other system attributes are filtered out
 	for _, attr := range processedAttrs {
 		if attr == "memberOf" {
@@ -93,7 +93,7 @@ func TestLDAPSearchFiltersSystemAttributes(t *testing.T) {
 			t.Error("distinguishedName should be filtered out")
 		}
 	}
-	
+
 	// Verify non-system attributes are preserved
 	foundCN := false
 	foundMail := false
@@ -113,11 +113,11 @@ func TestLDAPSearchFiltersSystemAttributes(t *testing.T) {
 	}
 }
 
-// TestLDAPObjectDataSourceFiltersSystemAttributes tests that ldap_object datasource filters system attributes  
+// TestLDAPObjectDataSourceFiltersSystemAttributes tests that ldap_object datasource filters system attributes.
 func TestLDAPObjectDataSourceFiltersSystemAttributes(t *testing.T) {
 	// Create a mock LDAP entry
 	mockEntry := &ldap.Entry{
-		DN: "CN=testgroup,OU=groups,DC=example,DC=com", 
+		DN: "CN=testgroup,OU=groups,DC=example,DC=com",
 		Attributes: []*ldap.EntryAttribute{
 			{Name: "cn", Values: []string{"testgroup"}},
 			{Name: "description", Values: []string{"Test group"}},
@@ -126,7 +126,7 @@ func TestLDAPObjectDataSourceFiltersSystemAttributes(t *testing.T) {
 			{Name: "objectGUID", Values: []string{"guid-value"}},
 		},
 	}
-	
+
 	// Test the filtering logic used in datasource
 	var processedAttrs []string
 	for _, attribute := range mockEntry.Attributes {
@@ -134,7 +134,7 @@ func TestLDAPObjectDataSourceFiltersSystemAttributes(t *testing.T) {
 			processedAttrs = append(processedAttrs, attribute.Name)
 		}
 	}
-	
+
 	// Verify memberOf is filtered out but member is preserved
 	foundMemberOf := false
 	foundMember := false
@@ -146,7 +146,7 @@ func TestLDAPObjectDataSourceFiltersSystemAttributes(t *testing.T) {
 			foundMember = true
 		}
 	}
-	
+
 	if foundMemberOf {
 		t.Error("memberOf should be filtered out by datasource")
 	}
@@ -161,7 +161,7 @@ func TestNoMemberOfInCodePaths(t *testing.T) {
 	if isBinaryAttribute("memberOf") {
 		t.Error("memberOf should not be treated as binary attribute")
 	}
-	
+
 	// Test 2: Verify encodeAttributeValues doesn't process memberOf specially
 	testValues := []string{"CN=group1,OU=groups,DC=example,DC=com"}
 	encoded := encodeAttributeValues("memberOf", testValues)
@@ -184,7 +184,7 @@ func TestMemberOfNotInUnorderedAttributesSlice(t *testing.T) {
 			t.Errorf("CRITICAL: memberOf found at index %d in unorderedAttributes slice - this will cause processing", i)
 		}
 	}
-	
+
 	// Log the current unordered attributes for verification
 	t.Logf("Current unordered attributes: %v", unorderedAttributes)
 }
@@ -195,14 +195,12 @@ func TestLDAPResourceStructureExcludesMemberOf(t *testing.T) {
 	model := &LDAPObjectResourceModel{
 		// Only initialize fields that should exist - if MemberOf existed, this would fail to compile
 		ID:            types.StringNull(),
-		DN:            types.StringNull(),  
+		DN:            types.StringNull(),
 		ObjectClasses: types.ListNull(types.StringType),
-		Attributes:    types.MapNull(types.ListType{ElemType: types.StringType}),
-		MemberCN:      types.ListNull(types.StringType),
-		MemberSAM:     types.ListNull(types.StringType),
+		Attributes:    types.MapNull(types.SetType{ElemType: types.StringType}),
 		IgnoreChanges: types.ListNull(types.StringType),
 	}
-	
+
 	// If this test compiles and runs, it proves MemberOf field was successfully removed
 	if model == nil {
 		t.Error("Model initialization failed")

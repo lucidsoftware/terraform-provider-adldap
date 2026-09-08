@@ -117,10 +117,10 @@ func TestSystemAttributeExclusion(t *testing.T) {
 					resource.TestCheckResourceAttr("ldap_object.systemtest", "dn", "cn=systemtest,dc=example,dc=com"),
 					resource.TestCheckResourceAttr("ldap_object.systemtest", "object_classes.0", "person"),
 					resource.TestCheckResourceAttr("ldap_object.systemtest", "attributes.sn.0", "test"),
-					// System attributes should not be set in state even if specified in config
-					resource.TestCheckNoResourceAttr("ldap_object.systemtest", "attributes.distinguishedName"),
-					resource.TestCheckNoResourceAttr("ldap_object.systemtest", "attributes.objectGUID"),
-					resource.TestCheckNoResourceAttr("ldap_object.systemtest", "attributes.objectSid"),
+					// System attributes remain in state but are excluded from LDAP operations.
+					resource.TestCheckTypeSetElemAttr("ldap_object.systemtest", "attributes.distinguishedName.*", "cn=systemtest,dc=example,dc=com"),
+					resource.TestCheckTypeSetElemAttr("ldap_object.systemtest", "attributes.objectGUID.*", "should-be-ignored"),
+					resource.TestCheckTypeSetElemAttr("ldap_object.systemtest", "attributes.objectSid.*", "should-be-ignored"),
 				),
 			},
 		},
@@ -247,6 +247,14 @@ resource "ldap_object" "test" {
 `
 
 const testImport = `
+terraform {
+	required_providers {
+		ldap = {
+			source = "lucidsoftware/ldap"
+		}
+	}
+}
+
 resource "ldap_object" "importtest" {
 	dn = "cn=importtest,dc=example,dc=com"
 	object_classes = ["person"]
@@ -274,6 +282,14 @@ func testImportPreConfig() {
 }
 
 const testImportIgnored = `
+terraform {
+	required_providers {
+		ldap = {
+			source = "lucidsoftware/ldap"
+		}
+	}
+}
+
 resource "ldap_object" "importtestignore" {
 	dn = "cn=importtestignore,dc=example,dc=com"
 	object_classes = ["person"]

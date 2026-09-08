@@ -7,7 +7,7 @@ data "ldap_cn_lookup" "user" {
 resource "ldap_object" "managers" {
   dn             = "CN=managers,OU=groups,DC=example,DC=com"
   object_classes = ["top", "group"]
-  
+
   attributes = {
     member = [data.ldap_cn_lookup.user.dn]
   }

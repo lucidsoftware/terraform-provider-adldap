@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"testing"
 )
 
@@ -47,7 +48,7 @@ func TestGenerateCacheKey(t *testing.T) {
 func TestCachedUserLookup(t *testing.T) {
 	// Create provider data with cache
 	providerData := &LDAPProviderData{
-		userLookupCache: make(map[string]UserLookupCacheEntry),
+		lookupCache: make(map[string]LookupCacheEntry),
 	}
 
 	ctx := context.Background()
@@ -87,7 +88,7 @@ func TestCachedUserLookup(t *testing.T) {
 
 	// Verify cache contents
 	cacheKey := generateCacheKey(rawKey)
-	entry, exists := providerData.userLookupCache[cacheKey]
+	entry, exists := providerData.lookupCache[cacheKey]
 	if !exists {
 		t.Errorf("Cache entry should exist for key %s", cacheKey)
 	}
@@ -102,7 +103,7 @@ func TestCachedUserLookup(t *testing.T) {
 func TestCachedUserLookupNotFound(t *testing.T) {
 	// Create provider data with cache
 	providerData := &LDAPProviderData{
-		userLookupCache: make(map[string]UserLookupCacheEntry),
+		lookupCache: make(map[string]LookupCacheEntry),
 	}
 
 	ctx := context.Background()
@@ -141,7 +142,7 @@ func TestCachedUserLookupNotFound(t *testing.T) {
 
 	// Verify cache contents
 	cacheKey := generateCacheKey(rawKey)
-	entry, exists := providerData.userLookupCache[cacheKey]
+	entry, exists := providerData.lookupCache[cacheKey]
 	if !exists {
 		t.Errorf("Cache entry should exist for key %s", cacheKey)
 	}
@@ -150,6 +151,104 @@ func TestCachedUserLookupNotFound(t *testing.T) {
 	}
 	if entry.Found {
 		t.Errorf("Cache entry Found = %t, want false", entry.Found)
+	}
+}
+
+func TestCachedGroupLookup(t *testing.T) {
+	providerData := &LDAPProviderData{
+		lookupCache: make(map[string]LookupCacheEntry),
+	}
+
+	ctx := context.Background()
+	rawKey := "group-cn:engineering:OU=groups,DC=example,DC=com"
+	callCount := 0
+	lookupFunc := func() (string, bool, error) {
+		callCount++
+		return "CN=engineering,OU=groups,DC=example,DC=com", true, nil
+	}
+
+	dn, found, err := providerData.cachedLookup(ctx, "Group", rawKey, lookupFunc)
+	if err != nil {
+		t.Fatalf("first group lookup returned error: %s", err)
+	}
+	if !found || dn != "CN=engineering,OU=groups,DC=example,DC=com" {
+		t.Errorf("first group lookup = (%q, %t), want found engineering group", dn, found)
+	}
+
+	dn, found, err = providerData.cachedLookup(ctx, "Group", rawKey, lookupFunc)
+	if err != nil {
+		t.Fatalf("cached group lookup returned error: %s", err)
+	}
+	if !found || dn != "CN=engineering,OU=groups,DC=example,DC=com" {
+		t.Errorf("cached group lookup = (%q, %t), want found engineering group", dn, found)
+	}
+	if callCount != 1 {
+		t.Errorf("group lookup function calls = %d, want 1", callCount)
+	}
+
+	entry, exists := providerData.lookupCache[generateCacheKey(rawKey)]
+	if !exists || !entry.Found || entry.DN != "CN=engineering,OU=groups,DC=example,DC=com" {
+		t.Errorf("unexpected group cache entry: %#v (exists: %t)", entry, exists)
+	}
+}
+
+func TestCachedGroupLookupNotFound(t *testing.T) {
+	providerData := &LDAPProviderData{
+		lookupCache: make(map[string]LookupCacheEntry),
+	}
+
+	ctx := context.Background()
+	rawKey := "group-cn:missing:OU=groups,DC=example,DC=com"
+	callCount := 0
+	lookupFunc := func() (string, bool, error) {
+		callCount++
+		return "", false, nil
+	}
+
+	for i := 0; i < 2; i++ {
+		dn, found, err := providerData.cachedLookup(ctx, "Group", rawKey, lookupFunc)
+		if err != nil {
+			t.Fatalf("missing group lookup returned error: %s", err)
+		}
+		if found || dn != "" {
+			t.Errorf("missing group lookup = (%q, %t), want (empty, false)", dn, found)
+		}
+	}
+	if callCount != 1 {
+		t.Errorf("group lookup function calls = %d, want 1", callCount)
+	}
+
+	entry, exists := providerData.lookupCache[generateCacheKey(rawKey)]
+	if !exists || entry.Found || entry.DN != "" {
+		t.Errorf("unexpected missing-group cache entry: %#v (exists: %t)", entry, exists)
+	}
+}
+
+func TestCachedLookupDoesNotCacheErrors(t *testing.T) {
+	providerData := &LDAPProviderData{
+		lookupCache: make(map[string]LookupCacheEntry),
+	}
+
+	ctx := context.Background()
+	rawKey := "group-cn:engineering:OU=groups,DC=example,DC=com"
+	callCount := 0
+	lookupFunc := func() (string, bool, error) {
+		callCount++
+		return "", false, errors.New("multiple groups found")
+	}
+
+	for i := 0; i < 2; i++ {
+		_, _, err := providerData.cachedLookup(ctx, "Group", rawKey, lookupFunc)
+		if err == nil {
+			t.Fatal("lookup error was not returned")
+		}
+	}
+
+	if callCount != 2 {
+		t.Errorf("lookup function calls = %d, want 2", callCount)
+	}
+	if _, exists := providerData.lookupCache[generateCacheKey(rawKey)]; exists {
+		t.Error("lookup error must not be cached")
 	}
 }
 
